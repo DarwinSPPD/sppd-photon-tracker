@@ -186,6 +186,7 @@ printcachelist = [[''],[''],[''],['']]
 timerstart = [None]
 pingprintmessage = [None]
 
+guifilepath = [r'C:\pathtooutput\sppd.darwingui']
 
 upgrademap = [0,1,5,15,25,40,55,70,70,70,70,70]
 
@@ -226,6 +227,7 @@ def logelementtocsv(param):
 ##			      (b'b', b'\x0c'), (b'b', b'\r'), (b'b', b'\x0e'), (b'b', b'\x0f')]
 ##		csvkeyexists = True
 ##		while True:
+	updategui = False
 	while True:
 		if csvelem[0] == b'h':
 			csvelemcopy = csvelem[1]
@@ -237,6 +239,13 @@ def logelementtocsv(param):
 					if csvelemsearch == (b'b', b'\xff'):
 						w += b'\r\n' + wstatusprefix + b'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1]
 						print (wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode(), flush=True)
+						printcachelist[2] = ['']
+						printcachelist[3] = ['']
+						if wstatusprefix.decode() == ' >>> ':
+							printcachelist[0] = [wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode() + '\n']
+						elif wstatusprefix.decode() == ' <<< ':
+							printcachelist[1] = [wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode() + '\n']
+						updategui = True
 						break
 					elif csvelemsearch == (b'i', b'\x00\x00\x00\x01') \
 					     and csvelemcopy[csvi][csvelemsearch][0] == b'h':
@@ -295,12 +304,19 @@ def logelementtocsv(param):
 				   csvelemcopy[csvi][csvelemsearch][0] == b's':
 					w += b'\r\n' +  wstatusprefix + b'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1]
 					print (wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode(), flush=True)
-					
+					printcachelist[2] = ['']
+					printcachelist[3] = ['']
+					if wstatusprefix.decode() == ' >>> ':
+						printcachelist[0] = [wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode() + '\n']
+					elif wstatusprefix.decode() == ' <<< ':
+						printcachelist[1] = [wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode() + '\n']
+					updategui = True
 				csvi += 1
 			if elementmeta != None or elementdeck != None \
 								  or elementname != None \
 								  or elementteam != None \
 								  or elementid != None:
+				updategui = True
 				print ('\n' + wstatusprefix.decode() + 'INTERPRETSPPD: Player details below', flush=True)
 				printcache = ''
 				printcachealreadyprinted = ''
@@ -314,15 +330,22 @@ def logelementtocsv(param):
 						w += b'\r\n' + wstatusprefix + b"Unprintable Name: " + repr(elementname).encode()
 						print (wstatusprefix.decode() + "Unprintable Name: " + repr(elementname), flush=True)
 						printcachealreadyprinted += wstatusprefix.decode() + "Unprintable Name: " + repr(elementname) + '\n'
+				try:
+					if elementteam != None:
+						w += b'\r\n' + wstatusprefix + b"Team: " + elementteam
+						print (wstatusprefix.decode() + "Team: " + elementteam.decode(), flush=True)
+						printcachealreadyprinted += wstatusprefix.decode() + "Team: " + elementteam.decode() + '\n'
+				except UnicodeEncodeError:
+					if elementteam != None:
+						w += b'\r\n' + wstatusprefix + b"Unprintable Team: " + repr(elementteam).encode()
+						print (wstatusprefix.decode() + "Unprintable Team: " + repr(elementteam), flush=True)
+						printcachealreadyprinted += wstatusprefix.decode() + "Unprintable Team: " + repr(elementteam) + '\n'
 				if elementid != None:
 					w += b'\r\n' + wstatusprefix + b"Profile ID: " + elementid
 					printcache += wstatusprefix.decode() + "Profile ID: " + elementid.decode() + '\n'
 				if elementplayerid != None:
 					w += b'\r\n' + wstatusprefix + b"Player ID: " + str(int.from_bytes(elementplayerid, 'big')).encode()
 					printcache += wstatusprefix.decode() + "Player ID: " + str(int.from_bytes(elementplayerid, 'big')) + '\n'
-				if elementteam != None:
-					w += b'\r\n' + wstatusprefix + b"Team: " + elementteam
-					printcache += wstatusprefix.decode() + "Team: " + elementteam.decode() + '\n'
 				if elementmatchrank != None or elementrank != None or elementelorank != None:
 					w += b'\r\n' + wstatusprefix
 					printcache += wstatusprefix.decode()
@@ -543,11 +566,11 @@ def logelementtocsv(param):
 									w += b'Coordinates:'
 									csvtmpint = int.from_bytes(csvtmp[0:8], 'big')
 									w += b'x=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 0 ) ).encode()+ b','
-									w += b'isleft=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
+									w += b'xsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
 									w += b'z=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 21 ) ).encode()+ b','
-									w += b'isbelow=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
+									w += b'zsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
 									w += b'y=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 42 ) ).encode()+ b','
-									w += b'isbottom=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
+									w += b'ysign=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
 								else:
 									csvw11 += b'"'+repr(tmpelem[csvelemlentemp]).encode().replace(b'"', b'""')+b'"'
 							csvelemlentemp += 1
@@ -559,35 +582,47 @@ def logelementtocsv(param):
 									oldcsvtmpint = csvtmpint
 									csvtmpint = int.from_bytes(csvtmp[0:8], 'big')
 									w += b'x=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 0 ) ).encode()+ b','
-									w += b'isleft=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
+									w += b'xsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
 									w += b'z=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 21 ) ).encode()+ b','
-									w += b'isbelow=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
+									w += b'zsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
 									w += b'y=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 42 ) ).encode()+ b','
-									w += b'isbottom=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
+									w += b'ysign=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
+									
 									printcache += 'x='
 									if ( ((1 << 1) - 1)  &  (oldcsvtmpint >> 20 ) ):
-										printcache += 'l'
+										printcache += '-'
 									else:
-										printcache += 'r'
-									printcache += '-'+str( ((1 << 20) - 1)  &  (oldcsvtmpint >> 0 ) ) + '->'
+										printcache += '+'
+									printcache += str( ((1 << 20) - 1)  &  (oldcsvtmpint >> 0 ) ) + '>'
 									if ( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ):
-										printcache += 'l'
+										printcache += '-'
 									else:
-										printcache += 'r'
-									printcache += '-'+str( ((1 << 20) - 1)  &  (csvtmpint >> 0 ) ) + ',y='
+										printcache += '+'
+									printcache += str( ((1 << 20) - 1)  &  (csvtmpint >> 0 ) ) + ','
+									
+									printcache += 'y='
 									if ( ((1 << 1) - 1)  &  (oldcsvtmpint >> 62 ) ):
-										printcache += 'b'
+										printcache += '-'
 									else:
-										printcache += 't'
-									printcache += '-'+str( ((1 << 20) - 1)  &  (oldcsvtmpint >> 42 ) ) + '->'
+										printcache += '+'
+									printcache += str( ((1 << 20) - 1)  &  (oldcsvtmpint >> 42 ) ) + '>'
 									if ( ((1 << 1) - 1)  &  (csvtmpint >> 62 ) ):
-										printcache += 'b'
+										printcache += '-'
 									else:
-										printcache += 't'
-									printcache += '-'+str( ((1 << 20) - 1)  &  (csvtmpint >> 42 ) )
-									printcache += ',z='+ \
-										      str( ((1 << 1) - 1)  &  (oldcsvtmpint >> 41 ) ) + '-'+ str( ((1 << 20) - 1)  &  (oldcsvtmpint >> 21 ) )+'->'+ \
-										      str( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ) + '-'+ str( ((1 << 20) - 1)  &  (csvtmpint >> 21 ) )
+										printcache += '+'
+									printcache += str( ((1 << 20) - 1)  &  (csvtmpint >> 42 ) ) + ','
+									
+									printcache += 'z='
+									if ( ((1 << 1) - 1)  &  (oldcsvtmpint >> 41 ) ):
+										printcache += '-'
+									else:
+										printcache += '+'
+									printcache += str( ((1 << 20) - 1)  &  (oldcsvtmpint >> 21 ) ) + '>'
+									if ( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ):
+										printcache += '-'
+									else:
+										printcache += '+'
+									printcache += str( ((1 << 20) - 1)  &  (csvtmpint >> 21 ) ) + ','
 										
 									
 								else:
@@ -599,11 +634,11 @@ def logelementtocsv(param):
 									w += b'OpponentsCoordinates:'
 									csvtmpint = int.from_bytes(csvtmp[0:8], 'big')
 									w += b'x=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 0 ) ).encode()+ b','
-									w += b'isleft=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
+									w += b'xsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
 									w += b'z=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 21 ) ).encode()+ b','
-									w += b'isbelow=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
+									w += b'zsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
 									w += b'y=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 42 ) ).encode()+ b','
-									w += b'isbottom=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
+									w += b'ysign=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
 							csvelemlentemp += 1
 							if csvelemlen > csvelemlentemp:
 								if tmpelem[csvelemlentemp][0] == b'l':
@@ -677,11 +712,11 @@ def logelementtocsv(param):
 										w += b'Coordinates:'
 										csvtmpint = int.from_bytes(csvtmp[0:8], 'big')
 										w += b'x=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 0 ) ).encode()+ b','
-										w += b'isleft=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
+										w += b'xsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
 										w += b'z=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 21 ) ).encode()+ b','
-										w += b'isbelow=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
+										w += b'zsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
 										w += b'y=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 42 ) ).encode()+ b','
-										w += b'isbottom=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
+										w += b'ysign=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
 							csvelemlentemp += 1
 							if csvelemlen > csvelemlentemp:
 								if tmpelem[csvelemlentemp][0] == b'o':
@@ -891,11 +926,11 @@ def logelementtocsv(param):
 									w += b'Coordinates:'
 									csvtmpint = int.from_bytes(csvtmp[0:8], 'big')
 									w += b'x=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 0 ) ).encode()+ b','
-									w += b'isleft(opponent)=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
+									w += b'xsign(opponent)=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 20 ) ).encode()+ b','
 									w += b'z=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 21 ) ).encode()+ b','
-									w += b'isbelow=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
+									w += b'zsign=' + hex( ((1 << 1) - 1)  &  (csvtmpint >> 41 ) ).encode()+ b','
 									w += b'y=' + str( ((1 << 20) - 1)  &  (csvtmpint >> 42 ) ).encode()+ b','
-									w += b'isbottom=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
+									w += b'ysign=' + hex( ((1 << 2) - 1)  &  (csvtmpint >> 62 ) ).encode()+ b','
 								else:
 									csvw6 += b'"'+repr(tmpelem[csvelemlentemp]).encode().replace(b'"', b'""')+b'"'
 							csvelemlentemp += 1
@@ -1087,6 +1122,7 @@ def logelementtocsv(param):
 	##				t = csvfile.write(csvw)
 				csvi += 1
 			if printcache != '':
+				updategui = True
 				if wstatusprefix.decode() == ' >>> ':
 					printcachelist[2] = [printcache]
 				elif wstatusprefix.decode() == ' <<< ':
@@ -1095,6 +1131,7 @@ def logelementtocsv(param):
 				if pingprintmessage[0] != None:
 					pingprintmessagecache = pingprintmessage[0] + '\n'
 				print('\n\n\n'+pingprintmessagecache+printcachelist[0][0] + printcachelist[1][0] + printcachelist[2][0] + printcachelist[3][0], flush=True)
+
 		elif csvelem[0] == b's' and csvcommandparam == (b'Data' + b' ' + repr(b'\xf5').encode()):
 			w += b'\r\n' + wstatusprefix + b"Query: " + csvelem[1]
 			print (wstatusprefix.decode() + "Query: " + csvelem[1].decode(), flush=True)
@@ -1123,6 +1160,53 @@ def logelementtocsv(param):
 			csvw += b'\r\n'
 	##			t = csvfile.write(csvw)
 		break
+	pingprintmessagecache = ''
+	if pingprintmessage[0] != None:
+		pingprintmessagecache = pingprintmessage[0] + '\n'
+	if (pingprintmessagecache != '' or \
+	   printcachelist[0][0] != '' or \
+	   printcachelist[1][0] != '' or \
+	   printcachelist[2][0] != '' or \
+	   printcachelist[3][0] != '') and updategui:
+		with open(guifilepath[0], 'ab', buffering=0) as gui_f:
+			gui_dict_1_header = b'h\x00\x01'
+			gui_string_sppd = b'sppd'
+			gui_sstring_sppd = b's'+(len(gui_string_sppd).to_bytes(2, byteorder='big'))+gui_string_sppd
+			
+			gui_dict_4_header = b'h\x00\x04'
+			gui_string_sentmeta = b'sentmeta'
+			gui_sstring_sentmeta = b's'+(len(gui_string_sentmeta).to_bytes(2, byteorder='big'))+gui_string_sentmeta
+			gui_string_receivedmeta = b'receivedmeta'
+			gui_sstring_receivedmeta = b's'+(len(gui_string_receivedmeta).to_bytes(2, byteorder='big'))+gui_string_receivedmeta
+			gui_string_sentposition = b'sentposition'
+			gui_sstring_sentposition = b's'+(len(gui_string_sentposition).to_bytes(2, byteorder='big'))+gui_string_sentposition
+			gui_string_receivedposition = b'receivedposition'
+			gui_sstring_receivedposition = b's'+(len(gui_string_receivedposition).to_bytes(2, byteorder='big'))+gui_string_receivedposition
+
+			
+			gui_string_sentmeta_ = (pingprintmessagecache+printcachelist[0][0]).encode()
+			gui_sstring_sentmeta_ = b's'+(len(gui_string_sentmeta_).to_bytes(2, byteorder='big'))+gui_string_sentmeta_
+			gui_string_receivedmeta_ = (printcachelist[1][0]).encode()
+			gui_sstring_receivedmeta_ = b's'+(len(gui_string_receivedmeta_).to_bytes(2, byteorder='big'))+gui_string_receivedmeta_
+			gui_string_sentposition_ = (printcachelist[2][0]).encode()
+			gui_sstring_sentposition_ = b's'+(len(gui_string_sentposition_).to_bytes(2, byteorder='big'))+gui_string_sentposition_
+			gui_string_receivedposition_ = (printcachelist[3][0]).encode()
+			gui_sstring_receivedposition_ = b's'+(len(gui_string_receivedposition_).to_bytes(2, byteorder='big'))+gui_string_receivedposition_
+
+			gui_dict_4 = gui_dict_4_header + \
+				     gui_sstring_sentmeta + gui_sstring_sentmeta_ + \
+				     gui_sstring_receivedmeta + gui_sstring_receivedmeta_ + \
+				     gui_sstring_sentposition + gui_sstring_sentposition_ + \
+				     gui_sstring_receivedposition + gui_sstring_receivedposition_
+
+			gui_dict_1 = gui_dict_1_header + \
+				     gui_sstring_sppd + gui_dict_4
+
+			gui_header_size = len(b'\xfb\x00\x00\x00\x05')
+			
+			gui_buffer = b'\xfb' + (gui_header_size + len(gui_dict_1)).to_bytes(4, byteorder='big') + gui_dict_1
+			assert len(gui_buffer) == int.from_bytes(gui_buffer[1:5], 'big')
+			gui_temp = gui_f.write(gui_buffer)
 	return (csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix)
 
 	
@@ -1135,7 +1219,19 @@ def logelementtocsv(param):
 
 
 def processelement(param):
+	## params:
+	# > ja: element count (1)
+	# > haskeys: elements are being read from dictionary, reads key element and value element (False)
+	# > b: input (b'')
+	# > jbase + j: position at input (5), jbase: constant increment generated outside this function, j: variable increment generated by this function
+	# > w: output (b'')
+	# > splitindex, wi, d, stream: unused (0, 0, {}, b'')
+	# > input parameter writeelem: write tree representation of element to output (False)
+	# > output parameter elem: element
+	# > wstatusprefix: prefix for tree representation (b'')
+	
 	(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, writeelem, wstatusprefix) = param
+##	w += b'\r\n DEBUG: processelement received param = ' + repr((ja, haskeys, b, jbase, j, 'len(w) = ' + str(len(w)), splitindex, wi, d, stream, writeelem, wstatusprefix)).encode() +  b'\r\n'
 	stack = {}
 	elemprettyprint = b''
 	elemprettyprintdepth = 1
@@ -1152,15 +1248,8 @@ def processelement(param):
 				if b[jbase+j+0:jbase+j+1] == b's':
 					jtemp = int.from_bytes(b[jbase+j+1:jbase+j+3], "big")
 					w2 = b[jbase+j+3:jbase+j+jtemp+3]
-##						w3 = w2[:]
-##						if (jbase+j+3) <= splitindex and splitindex < (jbase+j+jtemp+3):
-##							wtemp = w[:wi]
-##							w = wtemp[:]
-##							w3 = b[splitindex:jbase+j+jtemp+3]
 					j += jtemp
 					if len(w2) != jtemp:
-##							w += b'/*** truncated ***/ \r\n'
-##							d.update({stream:b})
 						break
 					key = (b's', w2)
 					if elemprettyprintdepth != stackindex:
@@ -1203,22 +1292,16 @@ def processelement(param):
 							elemprettyprint += b'\t'
 							p -= 1
 					elemprettyprint += b'??? '
-					w += b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' ??? */ ' + repr(b[jbase+j+0:]).encode()
+					w += b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' at position ' + \
+					     str(jbase+j+0).encode() + b' */ ' + repr(b[:]).encode()
 					if writeelem:
 						w += b'/* ' + elemprettyprint + b' */ '
 					break
 			if b[jbase+j+0:jbase+j+1] == b's':
 				jtemp = int.from_bytes(b[jbase+j+1:jbase+j+3], "big")
 				w2 = b[jbase+j+3:jbase+j+jtemp+3]
-##					w3 = w2[:]
-##					if (jbase+j+3) <= splitindex and splitindex < (jbase+j+jtemp+3):
-##						wtemp = w[:wi]
-##						w = wtemp[:]
-##						w3 = b[splitindex:jbase+j+jtemp+3]
 				j += jtemp
 				if len(w2) != jtemp:
-##						w += b'/*** truncated ***/ \r\n'
-##						d.update({stream:b})
 					break
 				if elemprettyprintdepth != stackindex:
 					elemprettyprint += b'\r\n' + wstatusprefix
@@ -1277,15 +1360,8 @@ def processelement(param):
 				j += ((jbase+2) - (jbase+0))
 			elif b[jbase+j+0:jbase+j+1] == b'h':
 				w2 = b[jbase+j+0:jbase+j+3]
-##					w3 = w2[:]
-##					if (jbase+j+0) <= splitindex and splitindex < (jbase+j+3):
-##						wtemp = w[:wi]
-##						w = wtemp[:]
-##						w3 = b[splitindex:jbase+j+3]
 				jatemp = int.from_bytes(b[jbase+j+1:jbase+j+3], "big")
 				if len(w2) != 3:
-##						w += b'/*** truncated ***/ \r\n'
-##						d.update({stream:b})
 					break
 				if elemprettyprintdepth != stackindex:
 					elemprettyprint += b'\r\n' + wstatusprefix
@@ -1503,7 +1579,8 @@ def processelement(param):
 						elemprettyprint += b'\t'
 						p -= 1
 				elemprettyprint += b'??? '
-				w += b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' ??? */ ' + repr(b[jbase+j+0:]).encode()
+				w += b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' at position ' + \
+				     str(jbase+j+0).encode() + b' */ ' + repr(b[:]).encode()
 				if writeelem:
 					w += b'/* ' + elemprettyprint + b' */ '
 				break
@@ -1517,7 +1594,9 @@ def processelement(param):
 			elem = elem[1][0]
 		if writeelem:
 			w += b'/* ' + elemprettyprint + b' */ '
-	return (ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix)
+
+##		w += b'\r\n DEBUG: processelement sent param = ' + repr((ja, haskeys, b, jbase, j, 'len(w) = ' + str(len(w)), splitindex, wi, d, stream, elem, wstatusprefix)).encode() +  b'\r\n'	
+		return (ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix)
 
 
 

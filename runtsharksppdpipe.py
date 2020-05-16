@@ -15,8 +15,10 @@ import pywintypes
 import netifaces
 import signal
 import psutil
-
-
+import win32file
+import struct
+import win32con
+import winioctlcon
 
 maincommandline = [psutil.Process().cmdline()]
 print("python command received: "+str(maincommandline[0]), flush=True)
@@ -32,7 +34,7 @@ while argi < len(maincommandline[0]):
 
 class CustomException(Exception):
 	pass
-
+##print('sys.getdefaultencoding() = ' + repr(sys.getdefaultencoding()), flush = True)
 print("--- Starting SPPD monitoring engine ---", flush=True)
 
 gateways = netifaces.gateways()
@@ -43,13 +45,49 @@ extended_info = win32job.QueryInformationJobObject(hJob, win32job.JobObjectExten
 extended_info['BasicLimitInformation']['LimitFlags'] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
 win32job.SetInformationJobObject(hJob, win32job.JobObjectExtendedLimitInformation, extended_info)
 
+
+guifilepath = [r'C:\pathtooutput\sppd.darwingui']
+
+print("--- Clearing "+repr(guifilepath[0])+" ---", flush=True)
+with open(guifilepath[0], 'wb', buffering=0) as temp_f:
+	pass
+assert os.path.getsize(guifilepath[0]) == 0
+
+print("--- Enabling NTFS compression for "+repr(guifilepath[0])+" ---", flush=True)
+
+guifile_handle = win32file.CreateFile(guifilepath[0], \
+				      win32file.GENERIC_READ | win32file.GENERIC_WRITE, \
+				      0, None, win32file.OPEN_EXISTING, 0, None)
+guifile_buffer = struct.pack('H', win32con.COMPRESSION_FORMAT_DEFAULT)
+win32file.DeviceIoControl(Device = guifile_handle, IoControlCode = winioctlcon.FSCTL_SET_COMPRESSION, \
+			  InBuffer = guifile_buffer, OutBuffer = None)
+win32file.CloseHandle(guifile_handle)
+
+print("--- Launching GUI ---", flush=True)
+pythonexepath = psutil.Process().cmdline()[0]
+sppdgui_cmd=[pythonexepath, r'darwingui.py']
+gui_proc=subprocess.Popen(sppdgui_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags = subprocess.CREATE_NO_WINDOW, universal_newlines=True)
+
+perms = win32con.PROCESS_TERMINATE | win32con.PROCESS_SET_QUOTA
+gui_hProcess = win32api.OpenProcess(perms, False, gui_proc.pid)
+
+win32job.AssignProcessToJobObject(hJob, gui_hProcess)
+
+print("--- darwingui.py configured to terminate if runtsharksppdpipe.py dies ---", flush=True)
+
+
+def guiprocessoutputredirect(proc):
+	while proc.poll() is None:
+			line = proc.stdout.readline()
+			if line:
+				print(line, flush = True, end='')
+
+gui_th = threading.Thread(target=guiprocessoutputredirect, args=(gui_proc, ))
+gui_th.daemon = True
+gui_th.start()
+
+
 sshpcappath = r'C:\pathtooutput\ssh.pcap'
-
-print("--- Deleting "+repr(sshpcappath)+" ---", flush=True)
-
-start_time = [time.time()]
-if os.path.exists(sshpcappath):
-	os.remove(sshpcappath)
 
 
 
@@ -58,7 +96,8 @@ sshdump_cmd = [r'C:\Program Files\Wireshark\extcap\sshdump.exe', r'--extcap-inte
 	       defaultgateway, r'--remote-port', r'15432', r'--sshkey', \
 	       r'C:\pathtooutput\ssh_key.pem']
 
-perms = win32con.PROCESS_TERMINATE | win32con.PROCESS_SET_QUOTA
+
+start_time = [time.time()]
 
 while True:
 	if processpid > 0:
@@ -75,6 +114,13 @@ while True:
 		raise ValueError("invalid parameter: sshdumpprocesspid")
 	assert processpid == 0
 		
+	
+	print("--- Deleting "+repr(sshpcappath)+" ---", flush=True)
+
+	if os.path.exists(sshpcappath):
+		os.remove(sshpcappath)
+
+
 	
 	print("--- Launching sshdump ---", flush=True)
 
@@ -170,6 +216,7 @@ def pushsshpcaptotshark (pipe, param, killswitch):
 			except AssertionError as e:
 				exceptionrethrow = e
 			except pywintypes.error as e:
+				#TODO: figure out why tshark randomly crashes. Sending same data after restarting tshark will not crash it
 				print("tshark pipe crashed while receiving data up to position "+ str(copied), flush=True)
 				exceptionrethrow = e
 			except CustomException:
@@ -195,7 +242,7 @@ def sshdumpwatchdog (processpid, tsharkproc, killswitch):
 				raise CustomException
 			time.sleep(10)
 		try:
-			while psutil.Process(processpid).cmdline() == sshdumproccommandline[0]:
+			while psutil.Process(processpid).cmdline() == sshdump_cmd:
 				if killswitch[0]:
 					raise CustomException
 				time.sleep(10)
@@ -250,7 +297,7 @@ try:
 
 		win32job.AssignProcessToJobObject(hJob, hProcess)
 
-		print("--- ("+str(tsharkstartcount[0])+")tshark configured to terminate if python dies ---", flush=True)
+		print("--- ("+str(tsharkstartcount[0])+")tshark configured to terminate if runtsharksppdpipe.py dies ---", flush=True)
 		print("--- Connecting input pipe to tshark... ---", flush=True)
 		win32pipe.ConnectNamedPipe(pipe, None)
 		

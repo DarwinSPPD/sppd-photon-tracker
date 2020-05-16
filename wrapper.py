@@ -3,6 +3,17 @@ print('WRAPPER: testing dependencies...', flush = True)
 
 testfailed = False
 
+DEF_universal_newlines_True = [False]
+
+try:
+	print('\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\n' + \
+	      'sppd-photon-tracker: gives you data when game treats you rough\n' + \
+	      '\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\u0660\u4e36\n', \
+	      flush = True)
+	print('WRAPPER: unicode characters: SUPPORTED', flush = True)
+except UnicodeEncodeError as tmpe:
+	print('WRAPPER: unicode characters: MISSING', flush = True)
+	DEF_universal_newlines_True[0] = True
 try:
 	import subprocess
 	print('WRAPPER: import subprocess: SUCCESS', flush = True)
@@ -105,6 +116,34 @@ try:
 except ModuleNotFoundError as tmpe:
 	testfailed = True
 	print('WRAPPER: import netifaces: FAILURE', flush = True)
+try:
+	import win32file
+	print('WRAPPER: import win32file: SUCCESS', flush = True)
+except ModuleNotFoundError as tmpe:
+	testfailed = True
+	print('WRAPPER: import win32file: FAILURE', flush = True)
+try:
+	import struct
+	print('WRAPPER: import struct: SUCCESS', flush = True)
+except ModuleNotFoundError as tmpe:
+	testfailed = True
+	print('WRAPPER: import struct: FAILURE', flush = True)
+try:
+	import win32con
+	print('WRAPPER: import win32con: SUCCESS', flush = True)
+except ModuleNotFoundError as tmpe:
+	testfailed = True
+	print('WRAPPER: import win32con: FAILURE', flush = True)
+try:
+	import winioctlcon
+	print('WRAPPER: import winioctlcon: SUCCESS', flush = True)
+except ModuleNotFoundError as tmpe:
+	testfailed = True
+	print('WRAPPER: import winioctlcon: FAILURE', flush = True)
+
+
+
+
 if sys.version_info.major > 3 or (sys.version_info.major == 3 and sys.version_info.minor >= 7):
 	print("WRAPPER: python version is at least 3.7: SUCCESS", flush = True)
 else:
@@ -138,21 +177,58 @@ else:
 if testfailed:
 	sys.exit()
 
-
+sshdump_path = [r'C:\Program Files\Wireshark\extcap\sshdump.exe']
+sshdumplinked = [False]
 signal.signal(signal.SIGINT, signal.default_int_handler)
+
+
+hJob = win32job.CreateJobObject(None, "")
+extended_info = win32job.QueryInformationJobObject(hJob, win32job.JobObjectExtendedLimitInformation)
+extended_info['BasicLimitInformation']['LimitFlags'] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+win32job.SetInformationJobObject(hJob, win32job.JobObjectExtendedLimitInformation, extended_info)
+
+perms = win32con.PROCESS_TERMINATE | win32con.PROCESS_SET_QUOTA
 
 pid = 0
 pythonexepath = psutil.Process().cmdline()[0]
 while True:
 	print('WRAPPER: running process...', flush = True)
 	sppd_cmd=[pythonexepath, r'runtsharksppdpipe.py', r'sshdumpprocesspid='+str(pid) ]
-	proc=subprocess.Popen(sppd_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags = subprocess.CREATE_NO_WINDOW, universal_newlines=True)
+##	print('sys.stdout = ' + repr(sys.stdout), flush = True)
+
+	# allows python child process to print unicode characters to console without UnicodeEncodeError exception
+
+	my_env = os.environ
+	my_env['PYTHONIOENCODING'] = 'utf-8'
+	# TODO: find more portable solution without setting enviroment variable.
+	# Entering command in cmd.exe shell + Enter button does allow to print unicode characters
+	# PYTHONIOENCODING enviroment variable is supposed to work only with python children processes
+	
+	if DEF_universal_newlines_True[0]:
+		proc=subprocess.Popen(sppd_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags = subprocess.CREATE_NO_WINDOW, env = my_env, universal_newlines=True)
+	else:
+		proc=subprocess.Popen(sppd_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags = subprocess.CREATE_NO_WINDOW, env = my_env)
 	real_sppd_cmd = psutil.Process(proc.pid).cmdline()
+	runner_hProcess = win32api.OpenProcess(perms, False, proc.pid)
+	win32job.AssignProcessToJobObject(hJob, runner_hProcess)
+
+	print("--- runtsharksppdpipe.py configured to terminate if wrapper.py dies ---", flush=True)
+	
+##	print('proc.stdout.fileno() = ' + repr(proc.stdout.fileno()), flush = True)
 	try:
-		while proc.poll() is None:
-			line = proc.stdout.readline()
-			if line:
-				print(line, flush = True, end='')
+		if DEF_universal_newlines_True[0]:
+			while proc.poll() is None:
+				line = proc.stdout.readline()
+				if line:
+					print(line, flush = True, end='')
+		else:
+			while proc.poll() is None:
+				bytes_variable = os.read(proc.stdout.fileno(), 2 << 16)
+				if bytes_variable:
+					sys.stdout.buffer.write(bytes_variable)
+					sys.stdout.flush()
+
+				
 		returnvalue = proc.poll()
 		if returnvalue > (2 << 30):
 			returnvalue -= (2 << 31)
@@ -162,6 +238,14 @@ while True:
 			break
 		else:
 			print('WRAPPER: process returned ' + str((-1) * pid) + ', sleeping 60 seconds before restarting...', flush = True)
+			if not sshdumplinked[0] and psutil.Process(pid).cmdline()[0] == sshdump_path:
+				ssh_hProcess = win32api.OpenProcess(perms, False, pid)
+
+				win32job.AssignProcessToJobObject(hJob, gui_hProcess)
+
+				print("--- sshdump configured to terminate if wrapper.py dies ---", flush=True)
+
+				sshdumplinked[0] = True
 			time.sleep(60)
 	except KeyboardInterrupt as tmpe:
 		print('WRAPPER: sending interrupt to process...', flush = True)
@@ -176,15 +260,30 @@ while True:
 			    r'kernel.GenerateConsoleCtrlEvent(0, 0); ' + \
 			    r'']
 		signalproc=subprocess.Popen(signal_cmd, creationflags = subprocess.CREATE_NO_WINDOW)
-		while proc.poll() is None:
-			line = proc.stdout.readline()
-			if line:
-				print(line, flush = True, end='')
+		if DEF_universal_newlines_True[0]:
+			while proc.poll() is None:
+				line = proc.stdout.readline()
+				if line:
+					print(line, flush = True, end='')
+		else:
+			while proc.poll() is None:
+				bytes_variable = os.read(proc.stdout.fileno(), 2 << 16)
+				if bytes_variable:
+					sys.stdout.buffer.write(bytes_variable)
+					sys.stdout.flush()
+
+				
 		print('WRAPPER: reading remaining process output...', flush = True)
 		tmptuple = proc.communicate()
 		print('WRAPPER: process stdout below...', flush = True)
-		print(tmptuple[0], flush = True)
+		if DEF_universal_newlines_True[0]:
+			print(tmptuple[0], flush = True)
+		elif tmptuple[0]:
+			sys.stdout.buffer.write(tmptuple[0])
 		print('WRAPPER: process stderr below...', flush = True)
-		print(tmptuple[1], flush = True)
+		if DEF_universal_newlines_True[0]:
+			print(tmptuple[1], flush = True)
+		elif tmptuple[1]:
+			sys.stdout.buffer.write(tmptuple[1])
 		print('WRAPPER: process returned ' + str(proc.poll()) + ', exiting...', flush = True)
 		raise KeyboardInterrupt from tmpe
