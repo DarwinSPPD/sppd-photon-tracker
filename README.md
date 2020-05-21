@@ -6,9 +6,28 @@ Real time tracker for South Park: Phone Destroyer player versus player mode.
 
 Usage commands (use one from the following): 
 =============
-* Full support with dependency test > python.exe wrapper.py
-* Fallback option if wrapper.py fails > python.exe runtsharksppdpipe.py
-* GUI test > python.exe darwingui.py
+* Full support with dependency test
+```
+python.exe wrapper.py
+```
+* Fallback option if wrapper.py fails
+```
+python.exe runtsharksppdpipe.py
+```
+* GUI test
+```
+python.exe darwingui.py
+```
+
+---
+
+Debug API: 
+=============
+* Execute photon command in python shell (will print decoded output)
+```
+import interpretsppdpipe
+interpretsppdpipe.debug_execute_photon_packet(b'\xfb\x00\x00\x00\x1f\x00\x01\xf3\x03\xe1\x7f\xf8s\x00\x0eNo match found\x00\x00')
+```
 
 ---
 

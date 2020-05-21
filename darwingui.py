@@ -103,10 +103,17 @@ def tk_after():
 				print('GUI: decoding failed, stopping user interface updates!', flush = True)
 				print('GUI: ' + w.decode(), flush = True)
 				return
-			sentmeta = elem[1][0][(b's', b'sppd')][1][0][(b's', b'sentmeta')][1].decode()
-			receivedmeta = elem[1][0][(b's', b'sppd')][1][1][(b's', b'receivedmeta')][1].decode()
-			sentposition = elem[1][0][(b's', b'sppd')][1][2][(b's', b'sentposition')][1].decode()
-			receivedposition = elem[1][0][(b's', b'sppd')][1][3][(b's', b'receivedposition')][1].decode()
+
+			elem_sppd = interpretsppdpipe.photon_element_key(elem, (b's', b'sppd'))
+			sentmeta = interpretsppdpipe.photon_element_key(elem_sppd, (b's', b'sentmeta'))[1].decode()
+			receivedmeta = interpretsppdpipe.photon_element_key(elem_sppd, (b's', b'receivedmeta'))[1].decode()
+			sentposition = interpretsppdpipe.photon_element_key(elem_sppd, (b's', b'sentposition'))[1].decode()
+			receivedposition = interpretsppdpipe.photon_element_key(elem_sppd, (b's', b'receivedposition'))[1].decode()
+			
+##			sentmeta = elem[1][0][(b's', b'sppd')][1][0][(b's', b'sentmeta')][1].decode()
+##			receivedmeta = elem[1][0][(b's', b'sppd')][1][1][(b's', b'receivedmeta')][1].decode()
+##			sentposition = elem[1][0][(b's', b'sppd')][1][2][(b's', b'sentposition')][1].decode()
+##			receivedposition = elem[1][0][(b's', b'sppd')][1][3][(b's', b'receivedposition')][1].decode()
 			
 			(sentmeta, tk_font, tk_widthinpixels) = tk_insertnewlinesforlabeltext((sentmeta, tk_left['font'], 295))
 			(receivedmeta, tk_font, tk_widthinpixels) = tk_insertnewlinesforlabeltext((receivedmeta, tk_right['font'], 295))

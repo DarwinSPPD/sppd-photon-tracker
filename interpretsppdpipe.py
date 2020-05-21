@@ -183,6 +183,7 @@ CharacterNames = {\
 # 2: outgoing battlefield data
 # 3: incoming battlefield data
 printcachelist = [[''],[''],[''],['']]
+playeridcache = [[b''],[b'']]
 timerstart = [None]
 pingprintmessage = [None]
 
@@ -242,9 +243,14 @@ def logelementtocsv(param):
 						printcachelist[2] = ['']
 						printcachelist[3] = ['']
 						if wstatusprefix.decode() == ' >>> ':
+							playeridcache[0][0] = csvelemcopy[csvi][csvelemsearch][1]
 							printcachelist[0] = [wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode() + '\n']
 						elif wstatusprefix.decode() == ' <<< ':
-							printcachelist[1] = [wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode() + '\n']
+							playeridcache[1][0] = csvelemcopy[csvi][csvelemsearch][1]
+							if not (playeridcache[0][0] != b'' and playeridcache[0][0] == playeridcache[1][0]):
+								printcachelist[1] = [wstatusprefix.decode() + 'PlayerProperties profile id: ' + csvelemcopy[csvi][csvelemsearch][1].decode() + '\n']
+						else:
+							print('Dropping duplicate player data for ' + csvelemcopy[csvi][csvelemsearch][1].decode(), flush=True)
 						updategui = True
 						break
 					elif csvelemsearch == (b'i', b'\x00\x00\x00\x01') \
@@ -322,8 +328,8 @@ def logelementtocsv(param):
 				printcachealreadyprinted = ''
 				try:
 					if elementname != None:
-						w += b'\r\n' + wstatusprefix + b"Name: " + elementname
 						print (wstatusprefix.decode() + "Name: " + elementname.decode(), flush=True)
+						w += b'\r\n' + wstatusprefix + b"Name: " + elementname
 						printcachealreadyprinted += wstatusprefix.decode() + "Name: " + elementname.decode() + '\n'
 				except UnicodeEncodeError:
 					if elementname != None:
@@ -332,8 +338,8 @@ def logelementtocsv(param):
 						printcachealreadyprinted += wstatusprefix.decode() + "Unprintable Name: " + repr(elementname) + '\n'
 				try:
 					if elementteam != None:
-						w += b'\r\n' + wstatusprefix + b"Team: " + elementteam
 						print (wstatusprefix.decode() + "Team: " + elementteam.decode(), flush=True)
+						w += b'\r\n' + wstatusprefix + b"Team: " + elementteam
 						printcachealreadyprinted += wstatusprefix.decode() + "Team: " + elementteam.decode() + '\n'
 				except UnicodeEncodeError:
 					if elementteam != None:
@@ -341,6 +347,10 @@ def logelementtocsv(param):
 						print (wstatusprefix.decode() + "Unprintable Team: " + repr(elementteam), flush=True)
 						printcachealreadyprinted += wstatusprefix.decode() + "Unprintable Team: " + repr(elementteam) + '\n'
 				if elementid != None:
+					if wstatusprefix.decode() == ' >>> ':
+						playeridcache[0][0] = elementid
+					elif wstatusprefix.decode() == ' <<< ':
+						playeridcache[1][0] = elementid
 					w += b'\r\n' + wstatusprefix + b"Profile ID: " + elementid
 					printcache += wstatusprefix.decode() + "Profile ID: " + elementid.decode() + '\n'
 				if elementplayerid != None:
@@ -409,7 +419,10 @@ def logelementtocsv(param):
 				if wstatusprefix.decode() == ' >>> ':
 					printcachelist[0] = [printcache]
 				elif wstatusprefix.decode() == ' <<< ':
-					printcachelist[1] = [printcache]
+					if not (playeridcache[0][0] != b'' and playeridcache[0][0] == playeridcache[1][0]):
+						printcachelist[1] = [printcache]
+					else:
+						print('Dropping duplicate player data for ' + playeridcache[1][0].decode(), flush=True)
 				break
 				
 					
@@ -799,11 +812,12 @@ def logelementtocsv(param):
 							tmpelem = csvelem[1][csvi][csvelemsearch][1]
 							csvelemlen = len(tmpelem)
 							csvw4 += b'"z['+str(csvelemlen).encode()+b']:"'
-	##								csvw += b',"[0] i"' #5
-	##								csvw += b',"[1] i"' #6
-	##								csvw += b',"[2] i"' #7
+							# damage packet?
+	##								csvw += b',"[0] i"' #5 ? character hit id
+	##								csvw += b',"[1] i"' #6 ? damage
+	##								csvw += b',"[2] i"' #7 ? current hp
 	##								csvw += b',"[3] o"' #8
-	##								csvw += b',"[4] d"' #9
+	##								csvw += b',"[4] d"' #9 ? hit checksum
 	##								csvw += b',' #10
 	##								csvw += b',' #11
 	##								csvw += b',' #12
@@ -812,24 +826,44 @@ def logelementtocsv(param):
 	##								csvw += b',' #15
 	##								csvw += b',' #16
 	##								csvw += b',' #17
+							w += b'\r\n' + wstatusprefix
+							temp_csvi = 0
+							while temp_csvi < csvelemcount:
+								temp_csvelemsearch = list(csvelem[1][temp_csvi])[0]
+								if temp_csvelemsearch == (b'b', b'\x00'):
+									key_00_value_packed = csvelem[1][temp_csvi][temp_csvelemsearch]
+									if key_00_value_packed[0] == b'i':
+										w += b'Received damage Instance#'+str(int.from_bytes(key_00_value_packed[1], 'big', signed=True)).encode()
+										if str(int.from_bytes(key_00_value_packed[1], 'big', signed=True)).encode() in characterinstances:
+											characterinstancescharacter = characterinstances[str(int.from_bytes(key_00_value_packed[1], 'big', signed=True)).encode()]
+											if int(characterinstancescharacter) in CharacterNames:
+												w += b' of ' + CharacterNames[int(characterinstancescharacter)]
+											else:
+												w += b' of Character#' + characterinstancescharacter
+										w += b', '
+										break
+								temp_csvi += 1
 							csvelemlentemp = 0
 							if csvelemlen > csvelemlentemp:
 								if tmpelem[csvelemlentemp][0] == b'i':
-									csvw5 += b'"'+repr(tmpelem[csvelemlentemp][1]).encode().replace(b'"', b'""')+b'"'
-								else:
-									csvw5 += b'"'+repr(tmpelem[csvelemlentemp]).encode().replace(b'"', b'""')+b'"'
+									w += b'Character hit Instance#'+str(int.from_bytes(tmpelem[csvelemlentemp][1], 'big', signed=True)).encode()
+									if str(tmpelem[csvelemlentemp][1]).encode() in characterinstances:
+										characterinstancescharacter = characterinstances[str(int.from_bytes(tmpelem[csvelemlentemp][1], 'big', signed=True)).encode()]
+										if int(characterinstancescharacter) in CharacterNames:
+											w += b' of ' + CharacterNames[int(characterinstancescharacter)]
+										else:
+											w += b' of Character#' + characterinstancescharacter
+									w += b', '
 							csvelemlentemp += 1
 							if csvelemlen > csvelemlentemp:
 								if tmpelem[csvelemlentemp][0] == b'i':
-									csvw6 += b'"'+repr(tmpelem[csvelemlentemp][1]).encode().replace(b'"', b'""')+b'"'
-								else:
-									csvw6 += b'"'+repr(tmpelem[csvelemlentemp]).encode().replace(b'"', b'""')+b'"'
+									w += b'damage = '+str(int.from_bytes(tmpelem[csvelemlentemp][1], 'big', signed=True)).encode()
+									w += b', '
 							csvelemlentemp += 1
 							if csvelemlen > csvelemlentemp:
 								if tmpelem[csvelemlentemp][0] == b'i':
-									csvw7 += b'"'+repr(tmpelem[csvelemlentemp][1]).encode().replace(b'"', b'""')+b'"'
-								else:
-									csvw7 += b'"'+repr(tmpelem[csvelemlentemp]).encode().replace(b'"', b'""')+b'"'
+									w += b'current hp = '+str(int.from_bytes(tmpelem[csvelemlentemp][1], 'big', signed=True)).encode()
+									w += b', '
 							csvelemlentemp += 1
 							if csvelemlen > csvelemlentemp:
 								if tmpelem[csvelemlentemp][0] == b'o':
@@ -839,9 +873,8 @@ def logelementtocsv(param):
 							csvelemlentemp += 1
 							if csvelemlen > csvelemlentemp:
 								if tmpelem[csvelemlentemp][0] == b'd':
-									csvw9 += b'"'+repr(tmpelem[csvelemlentemp][1]).encode().replace(b'"', b'""')+b'"'
-								else:
-									csvw9 += b'"'+repr(tmpelem[csvelemlentemp]).encode().replace(b'"', b'""')+b'"'
+									w += b'hit checksum = '+repr(tmpelem[csvelemlentemp][1]).encode()
+									w += b', '
 						elif b'\x04' == csvelemsearch[1] and {(b'b', b'\x05'): (b'b', b'\x0b')} in csvelem[1]:
 							tmpelem = csvelem[1][csvi][csvelemsearch][1]
 							csvelemlen = len(tmpelem)
@@ -1594,9 +1627,13 @@ def processelement(param):
 			elem = elem[1][0]
 		if writeelem:
 			w += b'/* ' + elemprettyprint + b' */ '
-
-##		w += b'\r\n DEBUG: processelement sent param = ' + repr((ja, haskeys, b, jbase, j, 'len(w) = ' + str(len(w)), splitindex, wi, d, stream, elem, wstatusprefix)).encode() +  b'\r\n'	
-		return (ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix)
+	else:
+		w += b'\r\n DEBUG: processelement sent param = ' + repr((ja, haskeys, b, jbase, j, 'len(w) = ' + str(len(w)), splitindex, wi, d, stream, elem, wstatusprefix)).encode() +  b'\r\n'
+		print('processelem crashed, setting pointer at the end of the data...', flush=True)
+		j = len(b)-jbase
+				
+			
+	return (ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix)
 
 
 
@@ -1609,9 +1646,28 @@ def processelement(param):
 
 pingdictionary = [{}]
 def interpretsppd(param1line, param2file, othervariables):
+	#param1: output from tshark
+	#csvpackettime0 + b', ' + b'0000 ' + csvpackettimehours + b':' + csvpackettimeminutes + b':' + csvpackettimeseconds + b'\t'
+	# + source + b'\t'
+	# + sourceport + b'\t'
+	# + destination + b'\t'
+	# + destinationport + b'\t' + b.hex().encode()
+	# + b'\r\n'
+	# param2file: file handle
+	# type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})()
+	# csvw: unused
+	# b''
+	# streamfilter: dictionary containing a list of sppd streams
+	# {(b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport): (b'Command decoding below\r\n', b'Client')}
+	# d: stores fragments of photon packets
+	# {}
+	# characterinstances: list of character instance ids
+	# {}
+	# csvfile: used in dead code
+	# type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})()
+
+	# 
 	(csvw, streamfilter, d, characterinstances, csvfile) = othervariables
-	#param1 input file
-	#param2 output file
 
 
 	s, s_ = param1line.split(b'\r\n')
@@ -1744,118 +1800,118 @@ def interpretsppd(param1line, param2file, othervariables):
 
 						## data from https://github.com/rbrasga/sppd_mod/blob/master/BinaryMonitor.py
 
-						packetlen = int.from_bytes(b[1:5], 'big')
-						bsafecopy = b[:packetlen]
-						tempstring = b'b\x05b\x05b\x04z\x00\x04i\x00\x00'
-						tempinteger = bsafecopy.find(tempstring)
-						if tempinteger > (-1):
-							rbrasga_start = tempinteger + \
-									len(tempstring)
-							rbrasga_cardid = bsafecopy[rbrasga_start:rbrasga_start+2]
-							rbrasga_location_header = bsafecopy[rbrasga_start+2:rbrasga_start+2+1]
-							rbrasga_location = bsafecopy[rbrasga_start+3:rbrasga_start+3+8]
-							rbrasga_opponent = bsafecopy[rbrasga_start+14:rbrasga_start+14+2]
-							w += b'rbrasga_spellSearch: found '+str(tempstring).encode() + \
-							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
-							     b'; ['+str(rbrasga_start).encode() + b']cardid='+str(rbrasga_cardid).encode() + \
-							     b'; ['+str(rbrasga_start+2).encode() + b']location_header='+str(rbrasga_location_header).encode() + \
-							     b'; ['+str(rbrasga_start+3).encode() + b']location='+str(rbrasga_location).encode() + \
-							     b'; ['+str(rbrasga_start+14).encode() + b']opponent='+str(rbrasga_opponent).encode() + \
-							     b'\r\n'
-							print (wstatusprefix.decode() + 'rbrasga_spellSearch: found a match at position ' +str(tempinteger) + \
-							     '; cardid='+str(rbrasga_cardid) + \
-							     '; location_header='+str(rbrasga_location_header) + \
-							     '; location='+str(rbrasga_location) + \
-							     '; opponent='+str(rbrasga_opponent), flush=True)
-							w += wstatusprefix
-
-						
-						tempstring = b'b\x05b\x02b\x04z\x00\x0ci\x00\x00'
-						tempinteger = bsafecopy.find(tempstring)
-						if tempinteger > (-1):
-							rbrasga_start = tempinteger + \
-									len(tempstring)
-							rbrasga_cardid = bsafecopy[rbrasga_start:rbrasga_start+2]
-							rbrasga_opponent = bsafecopy[rbrasga_start+5:rbrasga_start+5+2]
-							rbrasga_location_header = bsafecopy[rbrasga_start+7:rbrasga_start+8]
-							rbrasga_location = bsafecopy[rbrasga_start+8:rbrasga_start+8+8]
-							rbrasga_card_level = bsafecopy[rbrasga_start+21:rbrasga_start+21+2]
-							rbrasga_unique_id = bsafecopy[rbrasga_start+21+2+3+1:rbrasga_start+21+2+3+1+4]
-							w += b'rbrasga_characterSearch: found '+str(tempstring).encode() + \
-							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
-							     b'; ['+str(rbrasga_start).encode() + b']cardid='+str(rbrasga_cardid).encode() + \
-							     b'; ['+str(rbrasga_start+5).encode() + b']opponent='+str(rbrasga_opponent).encode() + \
-							     b'; ['+str(rbrasga_start+7).encode() + b']location_header='+str(rbrasga_location_header).encode() + \
-							     b'; ['+str(rbrasga_start+8).encode() + b']location='+str(rbrasga_location).encode() + \
-							     b'; ['+str(rbrasga_start+21).encode() + b']card_level='+str(rbrasga_card_level).encode() + \
-							     b'; ['+str(rbrasga_start+21+2+3+1).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
-							     b'\r\n'
-							print (wstatusprefix.decode() + 'rbrasga_characterSearch: found a match at position ' +str(tempinteger) + \
-							     '; cardid='+str(rbrasga_cardid) + \
-							     '; opponent='+str(rbrasga_opponent) + \
-							     '; location_header='+str(rbrasga_location_header) + \
-							     '; location='+str(rbrasga_location) + \
-							     '; card_level='+str(rbrasga_card_level) + \
-							     '; unique_id='+str(rbrasga_unique_id), flush=True)
-							w += wstatusprefix
-
-						tempstring = b'\xfb\x00\x00\x00%\x00\x01\xf3\x02\xfd\x00\x02\xf4b\xc8\xf5h\x00\x03b\x00i'
-						tempinteger = bsafecopy.find(tempstring)
-						if tempinteger > (-1):
-							rbrasga_start = tempinteger + \
-									len(tempstring)
-							rbrasga_unique_id = bsafecopy[rbrasga_start:rbrasga_start+4]
-							w += b'rbrasga_findDeath: found '+str(tempstring).encode() + \
-							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
-							     b'; ['+str(rbrasga_start).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
-							     b'\r\n'
-							print (wstatusprefix.decode() + 'rbrasga_findDeath: found a match at position ' +str(tempinteger) + \
-							     '; unique_id='+str(rbrasga_unique_id), flush=True)
-							w += wstatusprefix
-
-						tempstring = b'\xfb\x00\x00\x00(\x00\x01\xf3\x04\xc8\x00\x02\xf5h\x00\x03b\x05b\x03b\x02'
-						tempinteger = bsafecopy.find(tempstring)
-						if tempinteger > (-1):
-							rbrasga_start = tempinteger + \
-									len(tempstring) + 5 + 2 + 1
-							rbrasga_unique_id = bsafecopy[rbrasga_start:rbrasga_start+4]
-							w += b'rbrasga_findOppDeath: found '+str(tempstring).encode() + \
-							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
-							     b'; ['+str(rbrasga_start).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
-							     b'\r\n'
-							print (wstatusprefix.decode() + 'rbrasga_findOppDeath: found a match at position ' +str(tempinteger) + \
-							     '; unique_id='+str(rbrasga_unique_id), flush=True)
-							w += wstatusprefix
-
-						tempstring = b'\xfb\x00\x00\x00?\x00\x01\xf3\x02\xfd\x00\x02\xf4b\xc8\xf5h\x00\x04b\x00i'
-						tempinteger = bsafecopy.find(tempstring)
-						if tempinteger > (-1):
-							rbrasga_start = tempinteger + \
-									len(tempstring)
-							rbrasga_unique_id = bsafecopy[rbrasga_start:rbrasga_start+4]
-							w += b'rbrasga_findCharge: found '+str(tempstring).encode() + \
-							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
-							     b'; ['+str(rbrasga_start).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
-							     b'\r\n'
-							print (wstatusprefix.decode() + 'rbrasga_findCharge: found a match at position ' +str(tempinteger) + \
-							     '; unique_id='+str(rbrasga_unique_id), flush=True)
-							w += wstatusprefix
-
-						tempstring = b'\xfb\x00\x00\x00B\x00\x01\xf3\x04\xc8\x00\x02\xf5h\x00\x04b\x05b\x00b\x04z\x00\x04b'
-						tempinteger = bsafecopy.find(tempstring)
-						if tempinteger > (-1):
-							rbrasga_start = tempinteger + \
-									len(tempstring)
-							rbrasga_unique_id = bsafecopy[rbrasga_start+30:rbrasga_start+30+4]
-							w += b'rbrasga_findOppCharge: found '+str(tempstring).encode() + \
-							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
-							     b'; ['+str(rbrasga_start+30).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
-							     b'\r\n'
-							print (wstatusprefix.decode() + 'rbrasga_findOppCharge: found a match at position ' +str(tempinteger) + \
-							     '; unique_id='+str(rbrasga_unique_id), flush=True)
-							w += wstatusprefix
+##						tempstring = b'b\x05b\x05b\x04z\x00\x04i\x00\x00'
+##						tempinteger = bsafecopy.find(tempstring)
+##						if tempinteger > (-1):
+##							rbrasga_start = tempinteger + \
+##									len(tempstring)
+##							rbrasga_cardid = bsafecopy[rbrasga_start:rbrasga_start+2]
+##							rbrasga_location_header = bsafecopy[rbrasga_start+2:rbrasga_start+2+1]
+##							rbrasga_location = bsafecopy[rbrasga_start+3:rbrasga_start+3+8]
+##							rbrasga_opponent = bsafecopy[rbrasga_start+14:rbrasga_start+14+2]
+##							w += b'rbrasga_spellSearch: found '+str(tempstring).encode() + \
+##							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
+##							     b'; ['+str(rbrasga_start).encode() + b']cardid='+str(rbrasga_cardid).encode() + \
+##							     b'; ['+str(rbrasga_start+2).encode() + b']location_header='+str(rbrasga_location_header).encode() + \
+##							     b'; ['+str(rbrasga_start+3).encode() + b']location='+str(rbrasga_location).encode() + \
+##							     b'; ['+str(rbrasga_start+14).encode() + b']opponent='+str(rbrasga_opponent).encode() + \
+##							     b'\r\n'
+##							print (wstatusprefix.decode() + 'rbrasga_spellSearch: found a match at position ' +str(tempinteger) + \
+##							     '; cardid='+str(rbrasga_cardid) + \
+##							     '; location_header='+str(rbrasga_location_header) + \
+##							     '; location='+str(rbrasga_location) + \
+##							     '; opponent='+str(rbrasga_opponent), flush=True)
+##							w += wstatusprefix
+##
+##						
+##						tempstring = b'b\x05b\x02b\x04z\x00\x0ci\x00\x00'
+##						tempinteger = bsafecopy.find(tempstring)
+##						if tempinteger > (-1):
+##							rbrasga_start = tempinteger + \
+##									len(tempstring)
+##							rbrasga_cardid = bsafecopy[rbrasga_start:rbrasga_start+2]
+##							rbrasga_opponent = bsafecopy[rbrasga_start+5:rbrasga_start+5+2]
+##							rbrasga_location_header = bsafecopy[rbrasga_start+7:rbrasga_start+8]
+##							rbrasga_location = bsafecopy[rbrasga_start+8:rbrasga_start+8+8]
+##							rbrasga_card_level = bsafecopy[rbrasga_start+21:rbrasga_start+21+2]
+##							rbrasga_unique_id = bsafecopy[rbrasga_start+21+2+3+1:rbrasga_start+21+2+3+1+4]
+##							w += b'rbrasga_characterSearch: found '+str(tempstring).encode() + \
+##							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
+##							     b'; ['+str(rbrasga_start).encode() + b']cardid='+str(rbrasga_cardid).encode() + \
+##							     b'; ['+str(rbrasga_start+5).encode() + b']opponent='+str(rbrasga_opponent).encode() + \
+##							     b'; ['+str(rbrasga_start+7).encode() + b']location_header='+str(rbrasga_location_header).encode() + \
+##							     b'; ['+str(rbrasga_start+8).encode() + b']location='+str(rbrasga_location).encode() + \
+##							     b'; ['+str(rbrasga_start+21).encode() + b']card_level='+str(rbrasga_card_level).encode() + \
+##							     b'; ['+str(rbrasga_start+21+2+3+1).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
+##							     b'\r\n'
+##							print (wstatusprefix.decode() + 'rbrasga_characterSearch: found a match at position ' +str(tempinteger) + \
+##							     '; cardid='+str(rbrasga_cardid) + \
+##							     '; opponent='+str(rbrasga_opponent) + \
+##							     '; location_header='+str(rbrasga_location_header) + \
+##							     '; location='+str(rbrasga_location) + \
+##							     '; card_level='+str(rbrasga_card_level) + \
+##							     '; unique_id='+str(rbrasga_unique_id), flush=True)
+##							w += wstatusprefix
+##
+##						tempstring = b'\xfb\x00\x00\x00%\x00\x01\xf3\x02\xfd\x00\x02\xf4b\xc8\xf5h\x00\x03b\x00i'
+##						tempinteger = bsafecopy.find(tempstring)
+##						if tempinteger > (-1):
+##							rbrasga_start = tempinteger + \
+##									len(tempstring)
+##							rbrasga_unique_id = bsafecopy[rbrasga_start:rbrasga_start+4]
+##							w += b'rbrasga_findDeath: found '+str(tempstring).encode() + \
+##							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
+##							     b'; ['+str(rbrasga_start).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
+##							     b'\r\n'
+##							print (wstatusprefix.decode() + 'rbrasga_findDeath: found a match at position ' +str(tempinteger) + \
+##							     '; unique_id='+str(rbrasga_unique_id), flush=True)
+##							w += wstatusprefix
+##
+##						tempstring = b'\xfb\x00\x00\x00(\x00\x01\xf3\x04\xc8\x00\x02\xf5h\x00\x03b\x05b\x03b\x02'
+##						tempinteger = bsafecopy.find(tempstring)
+##						if tempinteger > (-1):
+##							rbrasga_start = tempinteger + \
+##									len(tempstring) + 5 + 2 + 1
+##							rbrasga_unique_id = bsafecopy[rbrasga_start:rbrasga_start+4]
+##							w += b'rbrasga_findOppDeath: found '+str(tempstring).encode() + \
+##							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
+##							     b'; ['+str(rbrasga_start).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
+##							     b'\r\n'
+##							print (wstatusprefix.decode() + 'rbrasga_findOppDeath: found a match at position ' +str(tempinteger) + \
+##							     '; unique_id='+str(rbrasga_unique_id), flush=True)
+##							w += wstatusprefix
+##
+##						tempstring = b'\xfb\x00\x00\x00?\x00\x01\xf3\x02\xfd\x00\x02\xf4b\xc8\xf5h\x00\x04b\x00i'
+##						tempinteger = bsafecopy.find(tempstring)
+##						if tempinteger > (-1):
+##							rbrasga_start = tempinteger + \
+##									len(tempstring)
+##							rbrasga_unique_id = bsafecopy[rbrasga_start:rbrasga_start+4]
+##							w += b'rbrasga_findCharge: found '+str(tempstring).encode() + \
+##							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
+##							     b'; ['+str(rbrasga_start).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
+##							     b'\r\n'
+##							print (wstatusprefix.decode() + 'rbrasga_findCharge: found a match at position ' +str(tempinteger) + \
+##							     '; unique_id='+str(rbrasga_unique_id), flush=True)
+##							w += wstatusprefix
+##
+##						tempstring = b'\xfb\x00\x00\x00B\x00\x01\xf3\x04\xc8\x00\x02\xf5h\x00\x04b\x05b\x00b\x04z\x00\x04b'
+##						tempinteger = bsafecopy.find(tempstring)
+##						if tempinteger > (-1):
+##							rbrasga_start = tempinteger + \
+##									len(tempstring)
+##							rbrasga_unique_id = bsafecopy[rbrasga_start+30:rbrasga_start+30+4]
+##							w += b'rbrasga_findOppCharge: found '+str(tempstring).encode() + \
+##							     b' at position ' +str(tempinteger).encode() + b' for data ' + str(bsafecopy).encode() + \
+##							     b'; ['+str(rbrasga_start+30).encode() + b']unique_id='+str(rbrasga_unique_id).encode() + \
+##							     b'\r\n'
+##							print (wstatusprefix.decode() + 'rbrasga_findOppCharge: found a match at position ' +str(tempinteger) + \
+##							     '; unique_id='+str(rbrasga_unique_id), flush=True)
+##							w += wstatusprefix
 						###
 
+						packetlen = int.from_bytes(b[1:5], 'big')
+						bsafecopy = b[:packetlen]
 						
 						w += s[:s.rindex(b'\t')+1]
 						if len(b[1:5]) != 4 or len(b[:int.from_bytes(b[1:5], 'big')]) != int.from_bytes(b[1:5], 'big'):
@@ -1863,595 +1919,641 @@ def interpretsppd(param1line, param2file, othervariables):
 							d.update({stream:b})
 							break
 						wi = len(w)
-						j = 0
-						if b[5:12] == b'\x00\x01\xf3\x02\xfe\x00\x00':
-							w += b'/* Command A0 */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:12]).encode()
-							w += b'\r\n'
+
+						photon_packet_data_5_7 = bsafecopy[5:7]
+						photon_packet_data_7_9 = bsafecopy[7:9]
+
+						if photon_packet_data_7_9 == b'\xf3\x02' \
+						   or photon_packet_data_7_9 == b'\xf3\x03' \
+						   or photon_packet_data_7_9 == b'\xf3\x04':
+							w += b'/* Command ' + bsafecopy[5:9].hex().encode() + b' */ ' + repr(bsafecopy[:5]).encode()
+							w += b' + ' + repr(photon_packet_data_5_7).encode() + b' + ' + repr(photon_packet_data_7_9).encode() + b'\r\n' 
 							j = 0
-							if b[12+j:]:
-								temp = b[12+j:]
+							photon_packet_i_9 = 0
+							skip_photon_param = False
+							while (9+photon_packet_i_9+3+j) <= packetlen:
+								photon_packet_data_9i0_9i1 = bsafecopy[9+photon_packet_i_9+0+j:9+photon_packet_i_9+1+j]
+								photon_packet_data_9i1_9i3 = bsafecopy[9+photon_packet_i_9+1+j:9+photon_packet_i_9+3+j]
+								w += b' + ' + repr(photon_packet_data_9i0_9i1).encode() + b' + ' + repr(photon_packet_data_9i1_9i3).encode() + b'\r\n'
+##								if not ((9+photon_packet_i_9+3+j) < packetlen):
+##									break
+								photon_packet_signed_integer_9i1_9i3 = int.from_bytes(photon_packet_data_9i1_9i3, "big", signed=True)
+								if photon_packet_signed_integer_9i1_9i3 < 0 or photon_packet_signed_integer_9i1_9i3 > 16384:
+									photon_packet_signed_integer_9i1_9i3 = 1
+									skip_photon_param = True
+								photon_packet_i_9 += 3
+								jj = 0
+								while ((9+photon_packet_i_9+j) <= packetlen) and (jj < photon_packet_signed_integer_9i1_9i3):
+									sppdparam = b''
+									if not skip_photon_param:
+										sppdparamdata = bsafecopy[9+photon_packet_i_9+0+j:9+photon_packet_i_9+1+j]
+										sppdparam = repr(sppdparamdata).encode()
+										if sppdparamdata in photonparameters:
+											sppdparam = photonparameters[sppdparamdata] + b' ' + sppdparam
+										w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+										photon_packet_i_9 += 1
+									(ja, haskeys, bsafecopy, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, bsafecopy, 9+photon_packet_i_9, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+									(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, sppdparam, elem, csvfile, 0, characterinstances, w, wstatusprefix))
+									w += b'\r\n'
+									jj += 1
+									if skip_photon_param:
+										break
+								if skip_photon_param:
+									break
+							if (9+photon_packet_i_9+j) < packetlen:
+								w += b'/* Unknown data of length ' + str(packetlen-(9+photon_packet_i_9+j)).encode() + b' */ ' + repr(bsafecopy[(9+photon_packet_i_9+j):]).encode() + b'\r\n'
+							if b[packetlen:]:
+								temp = b[packetlen:]
 								b = temp[:]
-								continue
-						elif b[5:12] == b'\x00\x01\xf3\x04\xe6\x00\x01'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xe5\x00\x01'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xe6\x00\x01'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xe2\x00\x01'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xde\x00\x01':
-							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:12]).encode() + b'\r\n' 
-							#1
-							sppdparam = repr(b[12:13]).encode()
-							if b[12:13] in photonparameters:
-								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, sppdparam, elem, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[13+j:]:
-								temp = b[13+j:]
-								b = temp[:]
-								continue
-						elif b[5:12] == b'\x00\x00\xf3\x02\xfd\x00\x02'\
-						or b[5:12] == b'\x00\x00\xf3\x04\xc9\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xc8\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xca\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xfd\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xe5\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xe3\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xfc\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xfe\x00\x02'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xd1\x00\x02':
-							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:12]).encode()
-							w += b'\r\n' 
-							#1
-							sppdparam = repr(b[12:13]).encode()
-							if b[12:13] in photonparameters:
-								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1= elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#2
-							sppdparam = repr(b[13+j:14+j]).encode()
-							if b[13+j:14+j] in photonparameters:
-								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 1, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[14+j:]:
-								temp = b[14+j:]
-								b = temp[:]
-								continue
-						elif b[5:12] == b'\x00\x01\xf3\x02\xfc\x00\x03'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xfd\x00\x03'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xff\x00\x03'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xfd\x00\x03'\
-						or b[5:12] == b'\x00\x00\xf3\x04\xe2\x00\x03'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xe2\x00\x03'\
-						or b[5:12] == b'\x00\x01\xf3\x04\xfe\x00\x03'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xe3\x00\x03':
-							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:12]).encode()
-							w += b'\r\n' 
-							#1
-							sppdparam = repr(b[12:13]).encode()
-							if b[12:13] in photonparameters:
-								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#2
-							sppdparam = repr(b[13+j:14+j]).encode()
-							if b[13+j:14+j] in photonparameters:
-								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#3
-							sppdparam = repr(b[14+j:15+j]).encode()
-							if b[14+j:15+j] in photonparameters:
-								sppdparam = photonparameters[b[14+j:15+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 15, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem3 = elem
-							csvsppdparam3 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[15+j:]:
-								temp = b[15+j:]
-								b = temp[:]
-								continue
-						elif b[5:12] == b'\x00\x01\xf3\x02\xfd\x00\x04'\
-						or b[5:12] == b'\x00\x01\xf3\x02\xe1\x00\x04':
-							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5+j]).encode()
-							w += b' + ' + repr(b[5:12]).encode()
-							w += b'\r\n' 
-							#1
-							sppdparam = repr(b[12:13]).encode()
-							if b[12:13] in photonparameters:
-								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#2
-							sppdparam = repr(b[13+j:14+j]).encode()
-							if b[13+j:14+j] in photonparameters:
-								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 2, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#3
-							sppdparam = repr(b[14+j:15+j]).encode()
-							if b[14+j:15+j] in photonparameters:
-								sppdparam = photonparameters[b[14+j:15+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 15, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem3 = elem
-							csvsppdparam3 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#4
-							sppdparam = repr(b[15+j:16+j]).encode()
-							if b[15+j:16+j] in photonparameters:
-								sppdparam = photonparameters[b[15+j:16+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem4 = elem
-							csvsppdparam4 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[16+j:]:
-								temp = b[16+j:]
-								b = temp[:]
-								continue
-						elif b[5:12] == b'\x00\x01\xf3\x02\xe3\x00\t':
-							w += b'/* Command A9 send opponents profile id and own data */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:12]).encode()
-							w += b'\r\n' 
-							#1
-							sppdparam = repr(b[12:13]).encode()
-							if b[12:13] in photonparameters:
-								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#2
-							sppdparam = repr(b[13+j:14+j]).encode()
-							if b[13+j:14+j] in photonparameters:
-								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#3
-							sppdparam = repr(b[14+j:15+j]).encode()
-							if b[14+j:15+j] in photonparameters:
-								sppdparam = photonparameters[b[14+j:15+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 15, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem3 = elem
-							csvsppdparam3 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#4
-							sppdparam = repr(b[15+j:16+j]).encode()
-							if b[15+j:16+j] in photonparameters:
-								sppdparam = photonparameters[b[15+j:16+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem4 = elem
-							csvsppdparam4 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#5
-							sppdparam = repr(b[16+j:17+j]).encode()
-							if b[16+j:17+j] in photonparameters:
-								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem5 = elem
-							csvsppdparam5 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam5, csvelem5, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#6
-							sppdparam = repr(b[17+j:18+j]).encode()
-							if b[17+j:18+j] in photonparameters:
-								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem6 = elem
-							csvsppdparam6 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam6, csvelem6, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#7
-							sppdparam = repr(b[18+j:19+j]).encode()
-							if b[18+j:19+j] in photonparameters:
-								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem7 = elem
-							csvsppdparam7 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam7, csvelem7, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#8
-							sppdparam = repr(b[19+j:20+j]).encode()
-							if b[19+j:20+j] in photonparameters:
-								sppdparam = photonparameters[b[19+j:20+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 20, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem8 = elem
-							csvsppdparam8 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam8, csvelem8, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n' 
-							#9
-							sppdparam = repr(b[20+j:21+j]).encode()
-							if b[20+j:21+j] in photonparameters:
-								sppdparam = photonparameters[b[20+j:21+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 21, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem9 = elem
-							csvsppdparam9 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam9, csvelem9, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[21+j:]:
-								temp = b[21+j:]
-								b = temp[:]
-								continue
-						elif b[5:15] == b'\x00\x01\xf3\x03\xe6\x00\x00*\x00\x00'\
-						or b[5:15] == b'\x00\x01\xf3\x03\xfc\x00\x00*\x00\x00'\
-						or b[5:15] == b'\x00\x01\xf3\x03\xe5\x00\x00*\x00\x00'\
-						or b[5:15] == b'\x00\x01\xf3\x03\xfe\x00\x00*\x00\x00':
-							w += b'/* Command B0 */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:15]).encode()
-							w += b'\r\n'
-							j = 0
-							if b[15+j:]:
-								temp = b[15+j:]
-								b = temp[:]
-								continue
-						elif b[5:15] == b'\x00\x01\xf3\x03\xe6\x00\x00*\x00\x02'\
-						or b[5:15] == b'\x00\x01\xf3\x03\xde\x00\x00*\x00\x02':
-							w += b'/* Command ' + b[5:15].hex().encode() + b' */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:15]).encode()
-							w += b'\r\n'
-							#1
-							sppdparam = repr(b[15:16]).encode()
-							if b[15:16] in photonparameters:
-								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#2
-							sppdparam = repr(b[16+j:17+j]).encode()
-							if b[16+j:17+j] in photonparameters:
-								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[17+j:]:
-								temp = b[17+j:]
-								b = temp[:]
-								continue
-						elif b[5:15] == b'\x00\x01\xf3\x03\xe3\x00\x00*\x00\x03'\
-						or b[5:15] == b'\x00\x01\xf3\x03\xe2\x00\x00*\x00\x03':
-							w += b'/* Command ' + b[5:15].hex().encode() + b' */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:15]).encode()
-							w += b'\r\n'
-							#1
-							sppdparam = repr(b[15:16]).encode()
-							if b[15:16] in photonparameters:
-								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#2
-							sppdparam = repr(b[16+j:17+j]).encode()
-							if b[16+j:17+j] in photonparameters:
-								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#3
-							sppdparam = repr(b[17+j:18+j]).encode()
-							if b[17+j:18+j] in photonparameters:
-								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem3 = elem
-							csvsppdparam3 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[18+j:]:
-								temp = b[18+j:]
-								b = temp[:]
-								continue
-						elif b[5:15] == b'\x00\x01\xf3\x03\xe1\x00\x00*\x00\x04' or \
-						     b[5:15] == b'\x00\x01\xf3\x03\xe2\x00\x00*\x00\x04':
-							w += b'/* Command B4 */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:15]).encode()
-							w += b'\r\n'
-							#1
-							sppdparam = repr(b[15:16]).encode()
-							if b[15:16] in photonparameters:
-								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#2
-							sppdparam = repr(b[16+j:17+j]).encode()
-							if b[16+j:17+j] in photonparameters:
-								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#3
-							sppdparam = repr(b[17+j:18+j]).encode()
-							if b[17+j:18+j] in photonparameters:
-								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem3 = elem
-							csvsppdparam3 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#4
-							sppdparam = repr(b[18+j:19+j]).encode()
-							if b[18+j:19+j] in photonparameters:
-								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem4 = elem
-							csvsppdparam4 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[19+j:]:
-								temp = b[19+j:]
-								b = temp[:]
-								continue
-						elif b[5:15] == b'\x00\x01\xf3\x03\xe3\x00\x00*\x00\x05':
-							w += b'/* Command B5 receive own data */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:15]).encode()
-							w += b'\r\n'
-							#1
-							sppdparam = repr(b[15:16]).encode()
-							if b[15:16] in photonparameters:
-								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#2
-							sppdparam = repr(b[16+j:17+j]).encode()
-							if b[16+j:17+j] in photonparameters:
-								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#3
-							sppdparam = repr(b[17+j:18+j]).encode()
-							if b[17+j:18+j] in photonparameters:
-								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem3 = elem
-							csvsppdparam3 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#4
-							sppdparam = repr(b[18+j:19+j]).encode()
-							if b[18+j:19+j] in photonparameters:
-								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem4 = elem
-							csvsppdparam4 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#5
-							sppdparam = repr(b[19+j:20+j]).encode()
-							if b[19+j:20+j] in photonparameters:
-								sppdparam = photonparameters[b[19+j:20+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 20, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem5 = elem
-							csvsppdparam5 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam5, csvelem5, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[20+j:]:
-								temp = b[20+j:]
-								b = temp[:]
-								continue
-						elif b[5:16] == b'\x00\x01\xf3\x03\xe2\x00\x00*\x00\x06\xfe':
-							w += b'/* Command B6 receive opponents data */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:15]).encode()
-							w += b'\r\n'
-							#1
-							sppdparam = repr(b[15:16]).encode()
-							if b[15:16] in photonparameters:
-								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem1 = elem
-							csvsppdparam1 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#2
-							sppdparam = repr(b[16+j:17+j]).encode()
-							if b[16+j:17+j] in photonparameters:
-								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem2 = elem
-							csvsppdparam2 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#3
-							sppdparam = repr(b[17+j:18+j]).encode()
-							if b[17+j:18+j] in photonparameters:
-								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem3 = elem
-							csvsppdparam3 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#4
-							sppdparam = repr(b[18+j:19+j]).encode()
-							if b[18+j:19+j] in photonparameters:
-								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem4 = elem
-							csvsppdparam4 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#5
-							sppdparam = repr(b[19+j:20+j]).encode()
-							if b[19+j:20+j] in photonparameters:
-								sppdparam = photonparameters[b[19+j:20+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 20, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem5 = elem
-							csvsppdparam5 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam5, csvelem5, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							#6
-							sppdparam = repr(b[20+j:21+j]).encode()
-							if b[20+j:21+j] in photonparameters:
-								sppdparam = photonparameters[b[20+j:21+j]] + b' ' + sppdparam
-							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 21, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-	##								if stream in d:
-	##									break
-							csvelem6 = elem
-							csvsppdparam6 = sppdparam
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam6, csvelem6, csvfile, 0, characterinstances, w, wstatusprefix))
-							w += b'\r\n'
-							if b[21+j:]:
-								temp = b[21+j:]
-								b = temp[:]
-								continue
+								continue	
+##						elif b[5:12] == b'\x00\x01\xf3\x02\xfe\x00\x00':
+##							w += b'/* Command A0 */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:12]).encode()
+##							w += b'\r\n'
+##							j = 0
+##							if b[12+j:]:
+##								temp = b[12+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:12] == b'\x00\x01\xf3\x04\xe6\x00\x01'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xe5\x00\x01'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xe6\x00\x01'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xe2\x00\x01'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xde\x00\x01':
+##							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:12]).encode() + b'\r\n' 
+##							#1
+##							sppdparam = repr(b[12:13]).encode()
+##							if b[12:13] in photonparameters:
+##								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, sppdparam, elem, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[13+j:]:
+##								temp = b[13+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:12] == b'\x00\x00\xf3\x02\xfd\x00\x02'\
+##						or b[5:12] == b'\x00\x00\xf3\x04\xc9\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xc8\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xca\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xfd\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xe5\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xe3\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xfc\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xfe\x00\x02'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xd1\x00\x02':
+##							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:12]).encode()
+##							w += b'\r\n' 
+##							#1
+##							sppdparam = repr(b[12:13]).encode()
+##							if b[12:13] in photonparameters:
+##								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1= elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#2
+##							sppdparam = repr(b[13+j:14+j]).encode()
+##							if b[13+j:14+j] in photonparameters:
+##								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 1, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[14+j:]:
+##								temp = b[14+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:12] == b'\x00\x01\xf3\x02\xfc\x00\x03'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xfd\x00\x03'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xff\x00\x03'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xfd\x00\x03'\
+##						or b[5:12] == b'\x00\x00\xf3\x04\xe2\x00\x03'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xe2\x00\x03'\
+##						or b[5:12] == b'\x00\x01\xf3\x04\xfe\x00\x03'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xe3\x00\x03':
+##							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:12]).encode()
+##							w += b'\r\n' 
+##							#1
+##							sppdparam = repr(b[12:13]).encode()
+##							if b[12:13] in photonparameters:
+##								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#2
+##							sppdparam = repr(b[13+j:14+j]).encode()
+##							if b[13+j:14+j] in photonparameters:
+##								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#3
+##							sppdparam = repr(b[14+j:15+j]).encode()
+##							if b[14+j:15+j] in photonparameters:
+##								sppdparam = photonparameters[b[14+j:15+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 15, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem3 = elem
+##							csvsppdparam3 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[15+j:]:
+##								temp = b[15+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:12] == b'\x00\x01\xf3\x02\xfd\x00\x04'\
+##						or b[5:12] == b'\x00\x01\xf3\x02\xe1\x00\x04':
+##							w += b'/* Command ' + b[5:12].hex().encode() + b' */ ' + repr(b[:5+j]).encode()
+##							w += b' + ' + repr(b[5:12]).encode()
+##							w += b'\r\n' 
+##							#1
+##							sppdparam = repr(b[12:13]).encode()
+##							if b[12:13] in photonparameters:
+##								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#2
+##							sppdparam = repr(b[13+j:14+j]).encode()
+##							if b[13+j:14+j] in photonparameters:
+##								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 2, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#3
+##							sppdparam = repr(b[14+j:15+j]).encode()
+##							if b[14+j:15+j] in photonparameters:
+##								sppdparam = photonparameters[b[14+j:15+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 15, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem3 = elem
+##							csvsppdparam3 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#4
+##							sppdparam = repr(b[15+j:16+j]).encode()
+##							if b[15+j:16+j] in photonparameters:
+##								sppdparam = photonparameters[b[15+j:16+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem4 = elem
+##							csvsppdparam4 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[16+j:]:
+##								temp = b[16+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:12] == b'\x00\x01\xf3\x02\xe3\x00\t':
+##							w += b'/* Command A9 send opponents profile id and own data */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:12]).encode()
+##							w += b'\r\n' 
+##							#1
+##							sppdparam = repr(b[12:13]).encode()
+##							if b[12:13] in photonparameters:
+##								sppdparam = photonparameters[b[12:13]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 13, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#2
+##							sppdparam = repr(b[13+j:14+j]).encode()
+##							if b[13+j:14+j] in photonparameters:
+##								sppdparam = photonparameters[b[13+j:14+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 14, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#3
+##							sppdparam = repr(b[14+j:15+j]).encode()
+##							if b[14+j:15+j] in photonparameters:
+##								sppdparam = photonparameters[b[14+j:15+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 15, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem3 = elem
+##							csvsppdparam3 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#4
+##							sppdparam = repr(b[15+j:16+j]).encode()
+##							if b[15+j:16+j] in photonparameters:
+##								sppdparam = photonparameters[b[15+j:16+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem4 = elem
+##							csvsppdparam4 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#5
+##							sppdparam = repr(b[16+j:17+j]).encode()
+##							if b[16+j:17+j] in photonparameters:
+##								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem5 = elem
+##							csvsppdparam5 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam5, csvelem5, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#6
+##							sppdparam = repr(b[17+j:18+j]).encode()
+##							if b[17+j:18+j] in photonparameters:
+##								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem6 = elem
+##							csvsppdparam6 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam6, csvelem6, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#7
+##							sppdparam = repr(b[18+j:19+j]).encode()
+##							if b[18+j:19+j] in photonparameters:
+##								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem7 = elem
+##							csvsppdparam7 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam7, csvelem7, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#8
+##							sppdparam = repr(b[19+j:20+j]).encode()
+##							if b[19+j:20+j] in photonparameters:
+##								sppdparam = photonparameters[b[19+j:20+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 20, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem8 = elem
+##							csvsppdparam8 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam8, csvelem8, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n' 
+##							#9
+##							sppdparam = repr(b[20+j:21+j]).encode()
+##							if b[20+j:21+j] in photonparameters:
+##								sppdparam = photonparameters[b[20+j:21+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 21, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem9 = elem
+##							csvsppdparam9 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam9, csvelem9, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[21+j:]:
+##								temp = b[21+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:15] == b'\x00\x01\xf3\x03\xe6\x00\x00*\x00\x00'\
+##						or b[5:15] == b'\x00\x01\xf3\x03\xfc\x00\x00*\x00\x00'\
+##						or b[5:15] == b'\x00\x01\xf3\x03\xe5\x00\x00*\x00\x00'\
+##						or b[5:15] == b'\x00\x01\xf3\x03\xfe\x00\x00*\x00\x00':
+##							w += b'/* Command B0 */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:15]).encode()
+##							w += b'\r\n'
+##							j = 0
+##							if b[15+j:]:
+##								temp = b[15+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:15] == b'\x00\x01\xf3\x03\xe6\x00\x00*\x00\x02'\
+##						or b[5:15] == b'\x00\x01\xf3\x03\xde\x00\x00*\x00\x02':
+##							w += b'/* Command ' + b[5:15].hex().encode() + b' */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:15]).encode()
+##							w += b'\r\n'
+##							#1
+##							sppdparam = repr(b[15:16]).encode()
+##							if b[15:16] in photonparameters:
+##								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#2
+##							sppdparam = repr(b[16+j:17+j]).encode()
+##							if b[16+j:17+j] in photonparameters:
+##								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[17+j:]:
+##								temp = b[17+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:15] == b'\x00\x01\xf3\x03\xe3\x00\x00*\x00\x03'\
+##						or b[5:15] == b'\x00\x01\xf3\x03\xe2\x00\x00*\x00\x03':
+##							w += b'/* Command ' + b[5:15].hex().encode() + b' */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:15]).encode()
+##							w += b'\r\n'
+##							#1
+##							sppdparam = repr(b[15:16]).encode()
+##							if b[15:16] in photonparameters:
+##								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#2
+##							sppdparam = repr(b[16+j:17+j]).encode()
+##							if b[16+j:17+j] in photonparameters:
+##								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#3
+##							sppdparam = repr(b[17+j:18+j]).encode()
+##							if b[17+j:18+j] in photonparameters:
+##								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem3 = elem
+##							csvsppdparam3 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[18+j:]:
+##								temp = b[18+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:15] == b'\x00\x01\xf3\x03\xe1\x00\x00*\x00\x04' or \
+##						     b[5:15] == b'\x00\x01\xf3\x03\xe2\x00\x00*\x00\x04':
+##							w += b'/* Command B4 */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:15]).encode()
+##							w += b'\r\n'
+##							#1
+##							sppdparam = repr(b[15:16]).encode()
+##							if b[15:16] in photonparameters:
+##								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#2
+##							sppdparam = repr(b[16+j:17+j]).encode()
+##							if b[16+j:17+j] in photonparameters:
+##								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#3
+##							sppdparam = repr(b[17+j:18+j]).encode()
+##							if b[17+j:18+j] in photonparameters:
+##								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem3 = elem
+##							csvsppdparam3 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#4
+##							sppdparam = repr(b[18+j:19+j]).encode()
+##							if b[18+j:19+j] in photonparameters:
+##								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem4 = elem
+##							csvsppdparam4 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[19+j:]:
+##								temp = b[19+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:15] == b'\x00\x01\xf3\x03\xe3\x00\x00*\x00\x05':
+##							w += b'/* Command B5 receive own data */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:15]).encode()
+##							w += b'\r\n'
+##							#1
+##							sppdparam = repr(b[15:16]).encode()
+##							if b[15:16] in photonparameters:
+##								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#2
+##							sppdparam = repr(b[16+j:17+j]).encode()
+##							if b[16+j:17+j] in photonparameters:
+##								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#3
+##							sppdparam = repr(b[17+j:18+j]).encode()
+##							if b[17+j:18+j] in photonparameters:
+##								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem3 = elem
+##							csvsppdparam3 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#4
+##							sppdparam = repr(b[18+j:19+j]).encode()
+##							if b[18+j:19+j] in photonparameters:
+##								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem4 = elem
+##							csvsppdparam4 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#5
+##							sppdparam = repr(b[19+j:20+j]).encode()
+##							if b[19+j:20+j] in photonparameters:
+##								sppdparam = photonparameters[b[19+j:20+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 20, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem5 = elem
+##							csvsppdparam5 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam5, csvelem5, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[20+j:]:
+##								temp = b[20+j:]
+##								b = temp[:]
+##								continue
+##						elif b[5:15] == b'\x00\x01\xf3\x03\xe2\x00\x00*\x00\x06':
+##							w += b'/* Command B6 receive opponents data */ ' + repr(b[:5]).encode()
+##							w += b' + ' + repr(b[5:15]).encode()
+##							w += b'\r\n'
+##							#1
+##							sppdparam = repr(b[15:16]).encode()
+##							if b[15:16] in photonparameters:
+##								sppdparam = photonparameters[b[15:16]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 16, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem1 = elem
+##							csvsppdparam1 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam1, csvelem1, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#2
+##							sppdparam = repr(b[16+j:17+j]).encode()
+##							if b[16+j:17+j] in photonparameters:
+##								sppdparam = photonparameters[b[16+j:17+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 17, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem2 = elem
+##							csvsppdparam2 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam2, csvelem2, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#3
+##							sppdparam = repr(b[17+j:18+j]).encode()
+##							if b[17+j:18+j] in photonparameters:
+##								sppdparam = photonparameters[b[17+j:18+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 18, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem3 = elem
+##							csvsppdparam3 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam3, csvelem3, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#4
+##							sppdparam = repr(b[18+j:19+j]).encode()
+##							if b[18+j:19+j] in photonparameters:
+##								sppdparam = photonparameters[b[18+j:19+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 19, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem4 = elem
+##							csvsppdparam4 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam4, csvelem4, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#5
+##							sppdparam = repr(b[19+j:20+j]).encode()
+##							if b[19+j:20+j] in photonparameters:
+##								sppdparam = photonparameters[b[19+j:20+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 20, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem5 = elem
+##							csvsppdparam5 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam5, csvelem5, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							#6
+##							sppdparam = repr(b[20+j:21+j]).encode()
+##							if b[20+j:21+j] in photonparameters:
+##								sppdparam = photonparameters[b[20+j:21+j]] + b' ' + sppdparam
+##							w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 21, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+##	##								if stream in d:
+##	##									break
+##							csvelem6 = elem
+##							csvsppdparam6 = sppdparam
+##							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, csvsppdparam6, csvelem6, csvfile, 0, characterinstances, w, wstatusprefix))
+##							w += b'\r\n'
+##							if b[21+j:]:
+##								temp = b[21+j:]
+##								b = temp[:]
+##								continue
 						elif b[5:9] == b'\x00\x01\xf3\x82' or b[5:9] == b'\x00\x01\xf3\x83':
 							w += b'/* Command C */ ' + repr(b[:5]).encode()
 							w += b'/* Param 1 */ ' + repr(b[5:9]).encode()
@@ -2464,17 +2566,19 @@ def interpretsppd(param1line, param2file, othervariables):
 						elif b[5:18] == b'\x00\x01\xf3\x06\x00\x00\x01\x01x\x00\x00\x00`':
 							w += b'/* Command C3 */ ' + repr(b[:5]).encode()
 							w += b'/* Param 1 */ ' + repr(b[5:18]).encode()
-							w += b'/* Param 2 data of length 96 */ ' + repr(b[18:114]).encode() + b'\r\n'
-							if b[114:]:
-								temp = b[114:]
+							packetlen = int.from_bytes(b[1:5], 'big')
+							w += b'/* Param 2 data of length ' + str(packetlen-18).encode() + b' */ ' + repr(b[18:packetlen]).encode() + b'\r\n'
+							if b[packetlen:]:
+								temp = b[packetlen:]
 								b = temp[:]
 								continue
 						elif b[5:21] == b'\x00\x01\xf3\x07\x00\x00\x00*\x00\x01\x01x\x00\x00\x00`':
 							w += b'/* Command C4 */ ' + repr(b[:5]).encode()
 							w += b'/* Param 1 */ ' + repr(b[5:21]).encode()
-							w += b'/* Param 2 data of length 96 */ ' + repr(b[21:117]).encode() + b'\r\n'
-							if b[117:]:
-								temp = b[117:]
+							packetlen = int.from_bytes(b[1:5], 'big')
+							w += b'/* Param 2 data of length ' + str(packetlen-21).encode() + b' */ ' + repr(b[21:packetlen]).encode() + b'\r\n'
+							if b[packetlen:]:
+								temp = b[packetlen:]
 								b = temp[:]
 								continue
 						elif b[5:16] == b'\x00\x01\xf3\x00\x01\x06\x1eA\x01\x11\x00':
@@ -2524,5 +2628,60 @@ def interpretsppd(param1line, param2file, othervariables):
 	return (csvw, streamfilter, d, characterinstances, csvfile)
 
 
+def debug_execute_photon_packet(b, photon_server = False):
+	
+##	def interpretsppd(param1line, param2file, othervariables):
+##		(csvw, streamfilter, d, characterinstances, csvfile) = othervariables
+##		#param1: output from tshark
+##		#csvpackettime0 + b', ' + b'0000 ' + csvpackettimehours + b':' + csvpackettimeminutes + b':' + csvpackettimeseconds + b'\t'
+##		# + source + b'\t'
+##		# + sourceport + b'\t'
+##		# + destination + b'\t'
+##		# + destinationport + b'\t' + b.hex().encode()
+##		# + b'\r\n'
+##		# param2file: file handle
+##		# type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})()
+##		# csvw: unused
+##		# b''
+##		# streamfilter: dictionary containing a list of sppd streams
+##		# {(b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport): (b'Command decoding below\r\n', b'Client')}
+##		# d: used in dead code
+##		# {}
+##		# characterinstances: list of character instance ids
+##		# {}
+##		# csvfile: used in dead code
+##		# type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})()
+	if photon_server: 
+		(csvw, streamfilter, d, characterinstances, csvfile) = interpretsppd(b'???, 0000 00:00:00 \t0.0.0.0\t4533\t0.0.0.0\t0\t' + \
+										     b.hex().encode() + b'\r\n', \
+										     type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})(), (\
+											     b'', \
+											     {(b'\t0.0.0.0\t4533\t0.0.0.0\t0'): (b'Command decoding below\r\n', b'Server')}, \
+											     {}, \
+											     {}, \
+											     type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})()))
+	else: 
+		(csvw, streamfilter, d, characterinstances, csvfile) = interpretsppd(b'???, 0000 00:00:00 \t0.0.0.0\t0\t0.0.0.0\t4533\t' + \
+										     b.hex().encode() + b'\r\n', \
+										     type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})(), (\
+											     b'', \
+											     {(b'\t0.0.0.0\t0\t0.0.0.0\t4533'): (b'Command decoding below\r\n', b'Client')}, \
+											     {}, \
+											     {}, \
+											     type("", (), {"write": (lambda self, b: print(b.decode(), flush=True))})()))
+##	print ('streamfilter = ' + repr(streamfilter), flush = True)
 
+
+def photon_element_key (elem, key):
+	value = None
+	i = 0
+	while i < len(elem[1]):
+		key_temp = list(elem[1][i])[0]
+		if key_temp == key:
+			value = elem[1][i][key]
+			break
+		i += 1
+##	if value == None:
+##		raise KeyError(key)
+	return value
 
