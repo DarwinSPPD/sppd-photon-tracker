@@ -19,6 +19,7 @@ import win32file
 import struct
 import win32con
 import winioctlcon
+import socket
 
 maincommandline = [psutil.Process().cmdline()]
 print("python command received: "+str(maincommandline[0]), flush=True)
@@ -81,6 +82,12 @@ def guiprocessoutputredirect(proc):
 			line = proc.stdout.readline()
 			if line:
 				print(line, flush = True, end='')
+	tmptuple = proc.communicate()
+	print('darwingui.py process stdout below...', flush = True)
+	print(tmptuple[0], flush = True)
+	print('darwingui.py process stderr below...', flush = True)
+	print(tmptuple[1], flush = True)
+	print("--- darwingui.py died with a return code "+str(proc.poll())+" ---", flush=True)
 
 gui_th = threading.Thread(target=guiprocessoutputredirect, args=(gui_proc, ))
 gui_th.daemon = True
@@ -98,6 +105,13 @@ sshdump_cmd = [r'C:\Program Files\Wireshark\extcap\sshdump.exe', r'--extcap-inte
 
 
 start_time = [time.time()]
+
+
+
+def exceptionthrowthread(param1):
+	raise Exception from param1
+
+sshdumpendpointisunusable = False
 
 while True:
 	if processpid > 0:
@@ -120,7 +134,58 @@ while True:
 	if os.path.exists(sshpcappath):
 		os.remove(sshpcappath)
 
+	print("--- Checking sshdump endpoint... ---", flush=True)
+	
+	sshdumpendpointisunusable = False
+	sshdumps = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	sshdumps.settimeout(0.0)
+	sshdumps_counter_0 = 0
+	while True:
+		sshdumps_counter_0 += 1
+		sshdumps_ret = sshdumps.connect_ex((defaultgateway, 15432))
+		print("--- ("+str(sshdumps_counter_0)+")connect_ex() == "+str(sshdumps_ret)+" ---", flush=True)
+		assert (sshdumps_ret == 0 or sshdumps_ret == 10035 or sshdumps_ret == 10056 or sshdumps_ret == 10022)
+		if sshdumps_ret == 10035:
+			time.sleep(1)
+			continue
+		tmpe2 = None
+		if sshdumps_ret == 0 or sshdumps_ret == 10056:
+			sshdumpendpointready = False
+			sshdumps_counter = 0
+			while True:
+				time.sleep(1)
+				try:
+					sshdumps_data = sshdumps.recv(1024)
+					print("--- recv() == "+str(sshdumps_data)+" ---", flush=True)
+					assert sshdumps_data == b'SSH-2.0-libssh_0.8.90\r\n'
+					sshdumpendpointready = True
+					break
+				except BlockingIOError as tmpe:
+					sshdumps_counter += 1
+					tmpe2 = tmpe
+					print("--- ("+str(sshdumps_counter)+")sshdump endpoint "+ defaultgateway + ":"+str(15432)+" is not responding, retrying to receive data... ---", flush=True)
+##					thtemp = threading.Thread(target=exceptionthrowthread, args=(tmpe2, ))
+##					thtemp.daemon = True
+##					thtemp.start()
+					if sshdumps_counter >= 60:
+						break
+					continue
+	##				pass
+			if sshdumpendpointready:
+				break
+		sshdumpendpointisunusable = True
+##		print("--- connect_ex() == "+str(sshdumps_ret)+" ---", flush=True)
+		print("--- sshdump endpoint "+ defaultgateway + ":"+str(15432)+" is not responding, unreachable or already in use ---", flush=True)
+		if tmpe2 != None:
+			thtemp = threading.Thread(target=exceptionthrowthread, args=(tmpe2, ))
+			thtemp.daemon = True
+			thtemp.start()
+		break
 
+	sshdumps.close()
+	if sshdumpendpointisunusable:
+		break
+##	assert (sshdumpendpointisunusable == False)		
 	
 	print("--- Launching sshdump ---", flush=True)
 
@@ -145,12 +210,11 @@ while True:
 #runtsharksppdpipe
 
 
-def exceptionthrowthread(param1):
-	raise Exception from param1
 
 startsshdumpwatchdogthread = [False]
-sshdumpreturnvalue = [None]
+##sshdumpreturnvalue = [None]
 threadkillswitch = [[None]]
+sshdumpdied = [False]
 
 def pushsshpcaptotshark (pipe, param, killswitch):
 	(path,) = param
@@ -164,9 +228,9 @@ def pushsshpcaptotshark (pipe, param, killswitch):
 				sshcapmessagecounter = 0
 				while sshcapmessagecounter < 60:
 					sshcapmessagecounter += 1
-					if sshdumpreturnvalue[0] != None:
-						print ('sshdump died', flush=True)
-						raise CustomException
+##					if sshdumpreturnvalue[0] != None:
+##						print ('sshdump died', flush=True)
+##						raise CustomException
 					if killswitch[0]:
 						print ('pushsshpcaptotshark requested to terminate', flush=True)
 						raise CustomException
@@ -178,7 +242,8 @@ def pushsshpcaptotshark (pipe, param, killswitch):
 						print("("+str(sshcapmessagecounter)+")sshdump output found", flush=True)
 						startsshdumpwatchdogthread[0] = True
 						break
-				if not os.path.exists(path) or os.stat(path).st_size == 0 or sshdumpreturnvalue[0] != None:
+				if not os.path.exists(path) or os.stat(path).st_size == 0:
+					sshdumpdied[0] = True
 					break
 				while True:
 					if killswitch[0]:
@@ -198,7 +263,10 @@ def pushsshpcaptotshark (pipe, param, killswitch):
 						f.write ('file range ' + str(total) + '-' + str(copied) + ' responded with ' + \
 						       str(len(data)) + ' bytes\n' )
 						copied = total
-						total = totaltemp
+						if (total + (1 << 16)) >= totaltemp:
+							total = totaltemp
+						else:
+							total += (1 << 16)
 						win32file.WriteFile(pipe, data)
 					else:
 						total = os.path.getsize(path)
@@ -217,6 +285,7 @@ def pushsshpcaptotshark (pipe, param, killswitch):
 				exceptionrethrow = e
 			except pywintypes.error as e:
 				#TODO: figure out why tshark randomly crashes. Sending same data after restarting tshark will not crash it
+				#unless size is in tens of megabytes
 				print("tshark pipe crashed while receiving data up to position "+ str(copied), flush=True)
 				exceptionrethrow = e
 			except CustomException:
@@ -231,7 +300,6 @@ def pushsshpcaptotshark (pipe, param, killswitch):
 		threadkillswitch[0][0] = True
 		#win32pipe.DisconnectNamedPipe(pipe)
 
-sshdumpdied = [False]
 
 ##def sshdumpwatchdog (processhandle, tsharkproc, killswitch):
 def sshdumpwatchdog (processpid, tsharkproc, killswitch):
@@ -245,6 +313,38 @@ def sshdumpwatchdog (processpid, tsharkproc, killswitch):
 			while psutil.Process(processpid).cmdline() == sshdump_cmd:
 				if killswitch[0]:
 					raise CustomException
+
+				sshdumps = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+				sshdumps.settimeout(0.0)
+				sshdumpendpointisunusable = False
+				while True:
+					sshdumps_ret = sshdumps.connect_ex((defaultgateway, 15432))
+					assert (sshdumps_ret == 0 or sshdumps_ret == 10035 or sshdumps_ret == 10056 or sshdumps_ret == 10022)
+					if sshdumps_ret == 10035:
+						time.sleep(1)
+						continue
+					tmpe = None
+					if sshdumps_ret == 0 or sshdumps_ret == 10056:
+						time.sleep(1)
+						try:
+							sshdumps_data = sshdumps.recv(1024)
+							print("--- sshdumpwatchdog: recv() == "+str(sshdumps_data)+" ---", flush=True)
+		##					assert sshdumps_data == b'SSH-2.0-libssh_0.8.90\r\n'
+		##					break
+						except BlockingIOError as tmpe:
+							pass
+						break
+					print("--- sshdumpwatchdog: unknown connect_ex() response "+str(sshdumps_ret)+" ---", flush=True)
+					threadkillswitch[0][0] = True
+##					sshdumpendpointisunusable = True
+##			##		print("--- connect_ex() == "+str(sshdumps_ret)+" ---", flush=True)
+##					print("--- sshdump endpoint "+ defaultgateway + ":"+str(15432)+" is not responding, unreachable or already in use ---", flush=True)
+##					if tmpe != None:
+##						thtemp = threading.Thread(target=exceptionthrowthread, args=(tmpe, ))
+##						thtemp.daemon = True
+##						thtemp.start()
+					break
+				sshdumps.close()
 				time.sleep(10)
 		except psutil.NoSuchProcess as tmpe:
 			pass
@@ -261,6 +361,11 @@ def sshdumpwatchdog (processpid, tsharkproc, killswitch):
 			tsharkproc.kill()
 	except CustomException:
 		print ('sshdumpwatchdog requested to terminate', flush=True)
+		print ('killing tshark in 10 secs...', flush=True)
+##		if not (processhandle.poll() is None):
+##			sshdumpdied[0] = True
+		time.sleep(10)
+		tsharkproc.kill()
 
 
 signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -276,7 +381,7 @@ try:
 	    0,
 	    None)
 	while (tsharkstartcount[0] < 10):
-		if sshdumpdied[0]:
+		if sshdumpdied[0] or sshdumpendpointisunusable:
 			print ('can\'t start SPPD interpreter without a running instance of sshdump!', flush=True)
 			break
 		threadkillswitch[0] = [False]
@@ -307,7 +412,7 @@ try:
 		exceptionrethrow = None
 
 		startsshdumpwatchdogthread[0] = False
-		sshdumpreturnvalue[0] = None
+##		sshdumpreturnvalue[0] = None
 
 		th = threading.Thread(target=pushsshpcaptotshark, args=(pipe, (sshpcappath, ), threadkillswitch[0]))
 		th.daemon = True

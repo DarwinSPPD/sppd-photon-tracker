@@ -140,6 +140,12 @@ try:
 except ModuleNotFoundError as tmpe:
 	testfailed = True
 	print('WRAPPER: import winioctlcon: FAILURE', flush = True)
+try:
+	import socket
+	print('WRAPPER: import socket: SUCCESS', flush = True)
+except ModuleNotFoundError as tmpe:
+	testfailed = True
+	print('WRAPPER: import socket: FAILURE', flush = True)
 
 
 
@@ -215,6 +221,7 @@ while True:
 	print("--- runtsharksppdpipe.py configured to terminate if wrapper.py dies ---", flush=True)
 	
 ##	print('proc.stdout.fileno() = ' + repr(proc.stdout.fileno()), flush = True)
+	tmpe = None
 	try:
 		if DEF_universal_newlines_True[0]:
 			while proc.poll() is None:
@@ -237,7 +244,7 @@ while True:
 			print('WRAPPER: process returned ' + str((-1) * pid) + ', exiting...', flush = True)
 			break
 		else:
-			print('WRAPPER: process returned ' + str((-1) * pid) + ', sleeping 60 seconds before restarting...', flush = True)
+			print('WRAPPER: process returned ' + str((-1) * pid) + ', sleeping 20 seconds before restarting...', flush = True)
 			if not sshdumplinked[0] and psutil.Process(pid).cmdline()[0] == sshdump_path:
 				ssh_hProcess = win32api.OpenProcess(perms, False, pid)
 
@@ -246,44 +253,51 @@ while True:
 				print("--- sshdump configured to terminate if wrapper.py dies ---", flush=True)
 
 				sshdumplinked[0] = True
-			time.sleep(60)
+			time.sleep(20)
+		continue
 	except KeyboardInterrupt as tmpe:
-		print('WRAPPER: sending interrupt to process...', flush = True)
-		signal_cmd=[pythonexepath, r'-c', \
-			    r'import ctypes; ' + \
-			    r'import psutil; ' + \
-			    r'kernel = ctypes.windll.kernel32; ' + \
-			    r'kernel.FreeConsole(); ' + \
-			    r'kernel.AttachConsole(' + str(proc.pid) + r'); ' + \
-			    r'assert psutil.Process(' + str(proc.pid) + r').cmdline() == ' + str(real_sppd_cmd) + r'; ' + \
-			    r'kernel.SetConsoleCtrlHandler(None, 1); ' + \
-			    r'kernel.GenerateConsoleCtrlEvent(0, 0); ' + \
-			    r'']
-		signalproc=subprocess.Popen(signal_cmd, creationflags = subprocess.CREATE_NO_WINDOW)
-		if DEF_universal_newlines_True[0]:
-			while proc.poll() is None:
-				line = proc.stdout.readline()
-				if line:
-					print(line, flush = True, end='')
-		else:
-			while proc.poll() is None:
-				bytes_variable = os.read(proc.stdout.fileno(), 2 << 16)
-				if bytes_variable:
-					sys.stdout.buffer.write(bytes_variable)
-					sys.stdout.flush()
+		pass
+	except psutil.NoSuchProcess as tmpe:
+		pass
+	
+##		print('WRAPPER: sending interrupt to process...', flush = True)
+##		signal_cmd=[pythonexepath, r'-c', \
+##			    r'import ctypes; ' + \
+##			    r'import psutil; ' + \
+##			    r'kernel = ctypes.windll.kernel32; ' + \
+##			    r'kernel.FreeConsole(); ' + \
+##			    r'kernel.AttachConsole(' + str(proc.pid) + r'); ' + \
+##			    r'assert psutil.Process(' + str(proc.pid) + r').cmdline() == ' + str(real_sppd_cmd) + r'; ' + \
+##			    r'kernel.SetConsoleCtrlHandler(None, 1); ' + \
+##			    r'kernel.GenerateConsoleCtrlEvent(0, 0); ' + \
+##			    r'']
+##		signalproc=subprocess.Popen(signal_cmd, creationflags = subprocess.CREATE_NO_WINDOW)
+	if DEF_universal_newlines_True[0]:
+		while proc.poll() is None:
+			line = proc.stdout.readline()
+			if line:
+				print(line, flush = True, end='')
+	else:
+		while proc.poll() is None:
+			bytes_variable = os.read(proc.stdout.fileno(), 2 << 16)
+			if bytes_variable:
+				sys.stdout.buffer.write(bytes_variable)
+				sys.stdout.flush()
 
-				
-		print('WRAPPER: reading remaining process output...', flush = True)
-		tmptuple = proc.communicate()
-		print('WRAPPER: process stdout below...', flush = True)
-		if DEF_universal_newlines_True[0]:
-			print(tmptuple[0], flush = True)
-		elif tmptuple[0]:
-			sys.stdout.buffer.write(tmptuple[0])
-		print('WRAPPER: process stderr below...', flush = True)
-		if DEF_universal_newlines_True[0]:
-			print(tmptuple[1], flush = True)
-		elif tmptuple[1]:
-			sys.stdout.buffer.write(tmptuple[1])
-		print('WRAPPER: process returned ' + str(proc.poll()) + ', exiting...', flush = True)
-		raise KeyboardInterrupt from tmpe
+			
+	print('WRAPPER: reading remaining process output...', flush = True)
+	tmptuple = proc.communicate()
+	print('WRAPPER: process stdout below...', flush = True)
+	if DEF_universal_newlines_True[0]:
+		print(tmptuple[0], flush = True)
+	elif tmptuple[0]:
+		sys.stdout.buffer.write(tmptuple[0])
+	print('WRAPPER: process stderr below...', flush = True)
+	if DEF_universal_newlines_True[0]:
+		print(tmptuple[1], flush = True)
+	elif tmptuple[1]:
+		sys.stdout.buffer.write(tmptuple[1])
+	print('WRAPPER: process returned ' + str(proc.poll()) + ', exiting...', flush = True)
+	raise Exception from tmpe
+	break
+

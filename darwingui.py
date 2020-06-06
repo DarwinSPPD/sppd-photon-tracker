@@ -97,11 +97,12 @@ def tk_after():
 ##		print('tk_after(): b = ' + repr(b))
 		if b != b'':
 			assert len(b) > 5
-			(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = \
-			     interpretsppdpipe.processelement((1, False, b, 5, 0, b'', 0, 0, {}, b'', False, b''))
-			if w != b'':
+			(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix, errormessage) = \
+			     interpretsppdpipe.processelement((1, False, b, 5, 0, b'', 0, 0, {}, b'', False, b'', None))
+			if w != b'' or errormessage != None:
 				print('GUI: decoding failed, stopping user interface updates!', flush = True)
 				print('GUI: ' + w.decode(), flush = True)
+				print('GUI: ' + errormessage.decode(), flush = True)
 				return
 
 			elem_sppd = interpretsppdpipe.photon_element_key(elem, (b's', b'sppd'))
@@ -130,6 +131,6 @@ def tk_after():
 			
 			
 	tk_top.after(50, tk_after)
-
+print('GUI has been started successfully', flush = True)
 tk_top.after(50, tk_after)
 tk_top.mainloop()

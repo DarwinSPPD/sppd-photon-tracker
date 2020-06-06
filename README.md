@@ -67,3 +67,4 @@ Requirements:
 	* struct
 	* win32con
 	* winioctlcon
+	* socket

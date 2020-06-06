@@ -7,6 +7,7 @@ photonparameters = {\
 b'\xbf': b'RoomOptionFlags',\
 b'\xc8': b'PluginVersion',\
 b'\xc9': b'PluginName',\
+b'\xcb': b'MasterClientId',\
 b'\xcc': b'Plugins',\
 b'\xd4': b'LobbyType',\
 b'\xd5': b'LobbyName',\
@@ -73,6 +74,7 @@ CharacterNames = {\
 1657: b'Poison', \
 30: b'Program Stan', \
 1805: b'Robo Bebe', \
+2308: b'Space Pilot Bradley', \
 1813: b'Visitors', \
 46: b'Warboy Tweek', \
 2101: b'Alien Drone', \
@@ -122,6 +124,7 @@ CharacterNames = {\
 141: b'Shieldmaiden Wendy', \
 29: b'Stan the Great', \
 1656: b'Chicken Coop', \
+2295: b'City Wok Guy', \
 1972: b'Dragonslayer Red', \
 1506: b'Dwarf Engineer Dougie', \
 179: b'Dwarf King Clyde', \
@@ -131,10 +134,10 @@ CharacterNames = {\
 54: b'Rogue Token', \
 135: b'The Amazingly Randy', \
 176: b'Witch Garrison', \
-1472: b'Cock Magic', \
 2035: b'Mr. Slave Executioner', \
 2210: b'Sorceress Liane', \
 1655: b'Transmogrify', \
+1472: b'Cock Magic', \
 32: b'Grand Wizard Cartman', \
 2200: b'Captain Diabetes', \
 2117: b'Super Fart', \
@@ -1260,27 +1263,27 @@ def logelementtocsv(param):
 			print (wstatusprefix.decode() + "Query: " + csvelem[1].decode(), flush=True)
 		else:
 			csvw = b''
-			csvw += b'"'+csvpackettime+b'"' #1
-			csvw += b',"'+csvstream+b'"' #2
-			csvw3 = b',"'+b'"' #3
-			csvw3b = b','+str(csvtype).encode() #3b
-			csvw4 = b',' #4
-			csvw5 = b',' #5
-			csvw6 = b',' #6
-			csvw7 = b',' #7
-			csvw8 = b',' #8
-			csvw9 = b',' #9
-			csvw10 = b',' #10
-			csvw11 = b',' #11
-			csvw12 = b',' #12
-			csvw13 = b',' #13
-			csvw14 = b',' #14
-			csvw15 = b',' #15
-			csvw16 = b',' #16
-			csvw17 = b',' #17
-			csvw4 += b'"??? '+repr(csvelem).encode().replace(b'"', b'""')+b'"'
-			csvw += csvw3 + csvw3b + csvw4 + csvw5 + csvw6 + csvw7 + csvw8 + csvw9 + csvw10 + csvw11 + csvw12 + csvw13 + csvw14 + csvw15 + csvw16 + csvw17
-			csvw += b'\r\n'
+##			csvw += b'"'+csvpackettime+b'"' #1
+##			csvw += b',"'+csvstream+b'"' #2
+##			csvw3 = b',"'+b'"' #3
+##			csvw3b = b','+str(csvtype).encode() #3b
+##			csvw4 = b',' #4
+##			csvw5 = b',' #5
+##			csvw6 = b',' #6
+##			csvw7 = b',' #7
+##			csvw8 = b',' #8
+##			csvw9 = b',' #9
+##			csvw10 = b',' #10
+##			csvw11 = b',' #11
+##			csvw12 = b',' #12
+##			csvw13 = b',' #13
+##			csvw14 = b',' #14
+##			csvw15 = b',' #15
+##			csvw16 = b',' #16
+##			csvw17 = b',' #17
+##			csvw4 += b'"??? '+repr(csvelem).encode().replace(b'"', b'""')+b'"'
+##			csvw += csvw3 + csvw3b + csvw4 + csvw5 + csvw6 + csvw7 + csvw8 + csvw9 + csvw10 + csvw11 + csvw12 + csvw13 + csvw14 + csvw15 + csvw16 + csvw17
+##			csvw += b'\r\n'
 	##			t = csvfile.write(csvw)
 		break
 	pingprintmessagecache = ''
@@ -1292,6 +1295,8 @@ def logelementtocsv(param):
 	   printcachelist[2][0] != '' or \
 	   printcachelist[3][0] != '') and updategui:
 		with open(guifilepath[0], 'ab', buffering=0) as gui_f:
+
+			#TODO: use object oriented model of photon data structures
 			gui_dict_1_header = b'h\x00\x01'
 			gui_string_sppd = b'sppd'
 			gui_sstring_sppd = b's'+(len(gui_string_sppd).to_bytes(2, byteorder='big'))+gui_string_sppd
@@ -1352,9 +1357,9 @@ def processelement(param):
 	# > input parameter writeelem: write tree representation of element to output (False)
 	# > output parameter elem: element
 	# > wstatusprefix: prefix for tree representation (b'')
+	# > errormessage: error message 
 	
-	(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, writeelem, wstatusprefix) = param
-##	w += b'\r\n DEBUG: processelement received param = ' + repr((ja, haskeys, b, jbase, j, 'len(w) = ' + str(len(w)), splitindex, wi, d, stream, writeelem, wstatusprefix)).encode() +  b'\r\n'
+	(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, writeelem, wstatusprefix, errormessage) = param
 	stack = {}
 	elemprettyprint = b''
 	elemprettyprintdepth = 1
@@ -1415,10 +1420,10 @@ def processelement(param):
 							elemprettyprint += b'\t'
 							p -= 1
 					elemprettyprint += b'??? '
-					w += b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' at position ' + \
-					     str(jbase+j+0).encode() + b' */ ' + repr(b[:]).encode()
-					if writeelem:
-						w += b'/* ' + elemprettyprint + b' */ '
+					errormessage = b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' at position ' + \
+					     str(jbase+j+0).encode() + b' */ ' + b'/* Partial tree print up to position ' + \
+					     str(jbase+j+0).encode() + b' ' + elemprettyprint + b' */ '
+					w += errormessage
 					break
 			if b[jbase+j+0:jbase+j+1] == b's':
 				jtemp = int.from_bytes(b[jbase+j+1:jbase+j+3], "big")
@@ -1693,6 +1698,21 @@ def processelement(param):
 				stack.update({stackindex+1:(0, jatemp, haskeystemp, tempelem)})
 				stackindex += 1
 				continue
+			# TODO: find photon data structure where first two bytes are b'cV' and second two bytes are not b'\x00\x0c'
+			elif b[jbase+j+0:jbase+j+4] == b'cV\x00\x0c':
+				if elemprettyprintdepth != stackindex:
+					elemprettyprint += b'\r\n' + wstatusprefix
+					elemprettyprintdepth = stackindex
+					p = elemprettyprintdepth
+					while p > 1:
+						elemprettyprint += b'\t'
+						p -= 1
+				elemprettyprint += b'cV\\x00\\x0c ' + repr(b[jbase+j+4:jbase+j+16]).encode() + b', '
+				if haskeys:
+					elem[1].append({key:(b'cV\\x00\\x0c', b[jbase+j+4:jbase+j+16])})
+				else:
+					elem[1].append((b'cV\\x00\\x0c', b[jbase+j+4:jbase+j+16]))
+				j += ((jbase+16) - (jbase+0))
 			else:
 				if elemprettyprintdepth != stackindex:
 					elemprettyprint += b'\r\n' + wstatusprefix
@@ -1702,10 +1722,10 @@ def processelement(param):
 						elemprettyprint += b'\t'
 						p -= 1
 				elemprettyprint += b'??? '
-				w += b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' at position ' + \
-				     str(jbase+j+0).encode() + b' */ ' + repr(b[:]).encode()
-				if writeelem:
-					w += b'/* ' + elemprettyprint + b' */ '
+				errormessage = b'/* Unsupported operation ' + repr(b[jbase+j+0:jbase+j+1]).encode() + b' at position ' + \
+				     str(jbase+j+0).encode() + b' */ ' + b'/* Partial tree print up to position ' + \
+				     str(jbase+j+0).encode() + b' ' + elemprettyprint + b' */ '
+				w += errormessage
 				break
 			jc += 1
 			stack.update({stackindex:(jc, ja, haskeys, elem)})
@@ -1718,12 +1738,14 @@ def processelement(param):
 		if writeelem:
 			w += b'/* ' + elemprettyprint + b' */ '
 	else:
-		w += b'\r\n DEBUG: processelement sent param = ' + repr((ja, haskeys, b, jbase, j, 'len(w) = ' + str(len(w)), splitindex, wi, d, stream, elem, wstatusprefix)).encode() +  b'\r\n'
-		print('processelem crashed, setting pointer at the end of the data...', flush=True)
-		j = len(b)-jbase
+		assert errormessage != None
+		elem = (b'photon corrupted data entry', [])
+##		w += b'\r\n DEBUG: processelement sent param = ' + repr((ja, haskeys, b, jbase, j, 'len(w) = ' + str(len(w)), splitindex, wi, d, stream, elem, wstatusprefix)).encode() +  b'\r\n'
+##		print('processelem crashed, setting pointer at the end of the data...', flush=True)
+##		j = len(b)-jbase
 				
 			
-	return (ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix)
+	return (ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix, errormessage)
 
 
 
@@ -1735,6 +1757,22 @@ def processelement(param):
 ##def interpretsppd(param1, param2):
 
 pingdictionary = [{}]
+
+def clearandresetplayerdatacache(param):
+	(characterinstances,) = param
+	characterinstances.clear()
+	timerstart[0] = None
+	pingdictionary[0] = {}
+	pingprintmessage[0] = None
+	playeridcache[0] = [b'']
+	playeridcache[1] = [b'']
+	playeridcache[2] = [(None, None, None, None, None, None, None, None, None)]
+	playeridcache[3] = [(None, None, None, None, None, None, None, None, None)]
+	printcachelist[0] = ['']
+	printcachelist[1] = ['']
+	printcachelist[2] = ['']
+	printcachelist[3] = ['']
+
 def interpretsppd(param1line, param2file, othervariables):
 	#param1: output from tshark
 	#csvpackettime0 + b', ' + b'0000 ' + csvpackettimehours + b':' + csvpackettimeminutes + b':' + csvpackettimeseconds + b'\t'
@@ -1783,10 +1821,7 @@ def interpretsppd(param1line, param2file, othervariables):
 				if ((not ((b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport) in streamfilter)) or \
 				   (not ((b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport) in streamfilter))) and \
 				   b[:1] == b'\xfb' and len(b[1:5]) == 4 and len(b) == int.from_bytes(b[1:5], 'big'):
-					characterinstances = {}
-					timerstart[0] = None
-					pingdictionary[0] = {}
-					pingprintmessage[0] = None
+					clearandresetplayerdatacache((characterinstances,))
 					if destinationport == b'4530' or destinationport == b'4531' or destinationport == b'4533':
 						w += b'>>> \r\n>>> \r\n>>> \r\n >>> \r\n'
 						wstatus = b'Client'
@@ -1800,22 +1835,17 @@ def interpretsppd(param1line, param2file, othervariables):
 						
 				
 				if (not ((b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport) in streamfilter)) and b == b'\x01\x00':
-					characterinstances = {}
 					wcache = b'<<< \r\n<<< \r\n<<< \r\n <<< ' + s[:s.rindex(b'\t')+1] + b'/* Welcome to our server! */ ' + repr(b).encode() + b'\r\n'
 					wstatus = b'Init'
 					streamfilter.update({stream:(wcache, wstatus)})
-					timerstart[0] = None
-					pingdictionary[0] = {}
-					pingprintmessage[0] = None
+					clearandresetplayerdatacache((characterinstances,))
 ##					continue
 					break
 				if (b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport) in streamfilter and \
 				   streamfilter[b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport][1] == b'Init' and \
 				   (b[:1] == b'\xf0' or b[:1] == b'\xfb' or b == b'\x01\x00'):
 					w += streamfilter[b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport][0]
-					timerstart[0] = None
-					pingdictionary[0] = {}
-					pingprintmessage[0] = None
+					clearandresetplayerdatacache((characterinstances,))
 					wstatus = b'Server'
 					streamfilter.update({stream:(wcache, wstatus)})
 					streamfilter.update({(b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport):(b'', b'Client')})
@@ -1823,9 +1853,7 @@ def interpretsppd(param1line, param2file, othervariables):
 				   streamfilter[b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport][1] == b'Init' and \
 				   (b[:1] == b'\xf0' or b[:1] == b'\xfb'):
 					w += streamfilter[b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport][0]
-					timerstart[0] = None
-					pingdictionary[0] = {}
-					pingprintmessage[0] = None
+					clearandresetplayerdatacache((characterinstances,))
 					wstatus = b'Client'
 					streamfilter.update({stream:(b'', wstatus)})
 					streamfilter.update({(b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport):(wcache, b'Server')})
@@ -1911,14 +1939,15 @@ def interpretsppd(param1line, param2file, othervariables):
 							j = 0
 							photon_packet_i_9 = 0
 							skip_photon_param = False
+							break_photon_processing = False
 							while (9+photon_packet_i_9+j) < packetlen:
 								photon_packet_data_9i0_9i1 = bsafecopy[9+photon_packet_i_9+0+j:9+photon_packet_i_9+1+j]
 								photon_packet_data_9i1_9i3 = bsafecopy[9+photon_packet_i_9+1+j:9+photon_packet_i_9+3+j]
 								w += b' + ' + repr(photon_packet_data_9i0_9i1).encode() + b' + ' + repr(photon_packet_data_9i1_9i3).encode() + b'\r\n'
 ##								if not ((9+photon_packet_i_9+3+j) < packetlen):
 ##									break
-								photon_packet_signed_integer_9i1_9i3 = int.from_bytes(photon_packet_data_9i1_9i3, "big", signed=True)
-								if photon_packet_signed_integer_9i1_9i3 < 0 or photon_packet_signed_integer_9i1_9i3 > 16384:
+								photon_packet_signed_integer_9i1_9i3 = int.from_bytes(photon_packet_data_9i1_9i3, "big")
+								if photon_packet_signed_integer_9i1_9i3 > 255:
 									photon_packet_signed_integer_9i1_9i3 = 1
 									skip_photon_param = True
 								photon_packet_i_9 += 3
@@ -1932,13 +1961,21 @@ def interpretsppd(param1line, param2file, othervariables):
 											sppdparam = photonparameters[sppdparamdata] + b' ' + sppdparam
 										w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
 										photon_packet_i_9 += 1
-									(ja, haskeys, bsafecopy, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, bsafecopy, 9+photon_packet_i_9, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+									jbase_temp = 9+photon_packet_i_9
+									j_temp = j
+									(ja, haskeys, bsafecopy, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix, errormessage) = processelement((1, False, bsafecopy, jbase_temp, j_temp, w, splitindex, wi, d, stream, True, wstatusprefix, None))
+									if errormessage != None:
+										break_photon_processing = True
+										w += b'\r\n' + wstatusprefix + b'/* Recognised portion of the photon packet */ ' + str(bsafecopy[:jbase_temp+j_temp]).encode() + \
+										     b' ' + b'/* Unrecognised portion of the photon packet */' + str(bsafecopy[jbase_temp+j_temp:]).encode()
 									(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, sppdparam, elem, csvfile, 0, characterinstances, w, wstatusprefix))
 									w += b'\r\n'
 									jj += 1
 									if skip_photon_param:
+										break_photon_processing = True
+									if break_photon_processing:
 										break
-								if skip_photon_param:
+								if break_photon_processing:
 									break
 							if (9+photon_packet_i_9+j) < packetlen:
 								w += b'/* Unknown data of length ' + str(packetlen-(9+photon_packet_i_9+j)).encode() + b' */ ' + repr(bsafecopy[(9+photon_packet_i_9+j):]).encode() + b'\r\n'
@@ -2037,7 +2074,7 @@ def debug_execute_photon_packet(b, photon_server = False):
 ##		# b''
 ##		# streamfilter: dictionary containing a list of sppd streams
 ##		# {(b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport): (b'Command decoding below\r\n', b'Client')}
-##		# d: used in dead code
+##		# d: cache for split photon commands
 ##		# {}
 ##		# characterinstances: list of character instance ids
 ##		# {}
