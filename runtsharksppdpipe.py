@@ -147,6 +147,10 @@ while True:
 		assert (sshdumps_ret == 0 or sshdumps_ret == 10035 or sshdumps_ret == 10056 or sshdumps_ret == 10022)
 		if sshdumps_ret == 10035:
 			time.sleep(1)
+			if sshdumps_counter_0 >= 60:
+				print("--- connect_ex() is returning code 10035 for too long ---", flush=True)
+				sshdumpendpointisunusable = True
+				break
 			continue
 		tmpe2 = None
 		if sshdumps_ret == 0 or sshdumps_ret == 10056:
@@ -306,6 +310,7 @@ def sshdumpwatchdog (processpid, tsharkproc, killswitch):
 	try:
 		time.sleep(10)
 		while not startsshdumpwatchdogthread[0]:
+			print("--- sshdumpwatchdog is waiting to run... ---", flush=True)
 			if killswitch[0]:
 				raise CustomException
 			time.sleep(10)
@@ -317,12 +322,24 @@ def sshdumpwatchdog (processpid, tsharkproc, killswitch):
 				sshdumps = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 				sshdumps.settimeout(0.0)
 				sshdumpendpointisunusable = False
+				sshdumps_counter = 0
 				while True:
 					sshdumps_ret = sshdumps.connect_ex((defaultgateway, 15432))
+					if sshdumps_ret == 10035 or sshdumps_ret == 10022:
+						sshdumps_counter += 1
+					else:
+						sshdumps_counter = 0
+					if sshdumps_counter == 0:
+						print("--- sshdumpwatchdog: connect_ex() == "+str(sshdumps_ret)+" ---", flush=True)
+					else:
+						print("--- ("+str(sshdumps_counter)+")sshdumpwatchdog: connect_ex() == "+str(sshdumps_ret)+" ---", flush=True)
 					assert (sshdumps_ret == 0 or sshdumps_ret == 10035 or sshdumps_ret == 10056 or sshdumps_ret == 10022)
-					if sshdumps_ret == 10035:
-						time.sleep(1)
-						continue
+					if sshdumps_ret == 10035 or sshdumps_ret == 10022:
+						if sshdumps_counter >= 60:
+							print("---sshdumpwatchdog:  connect_ex() is returning error codes for too long ---", flush=True)
+						else:
+							time.sleep(1)
+							continue
 					tmpe = None
 					if sshdumps_ret == 0 or sshdumps_ret == 10056:
 						time.sleep(1)
@@ -334,8 +351,9 @@ def sshdumpwatchdog (processpid, tsharkproc, killswitch):
 						except BlockingIOError as tmpe:
 							pass
 						break
-					print("--- sshdumpwatchdog: unknown connect_ex() response "+str(sshdumps_ret)+" ---", flush=True)
+					print("--- sshdumpwatchdog: last connect_ex() response "+str(sshdumps_ret)+", exiting... ---", flush=True)
 					threadkillswitch[0][0] = True
+					sshdumpdied[0] = True
 ##					sshdumpendpointisunusable = True
 ##			##		print("--- connect_ex() == "+str(sshdumps_ret)+" ---", flush=True)
 ##					print("--- sshdump endpoint "+ defaultgateway + ":"+str(15432)+" is not responding, unreachable or already in use ---", flush=True)
@@ -353,12 +371,13 @@ def sshdumpwatchdog (processpid, tsharkproc, killswitch):
 ##				raise CustomException
 ##			time.sleep(10)
 ##		sshdumpreturnvalue[0] = processhandle.poll()
-		if startsshdumpwatchdogthread[0]:
-			print ('sshdump died, killing tshark in 10 secs...', flush=True)
-			sshdumpdied[0] = True
-			#win32pipe.DisconnectNamedPipe(pipe)
-			time.sleep(10)
-			tsharkproc.kill()
+		assert startsshdumpwatchdogthread[0] == True
+		
+		print ('sshdump died, killing tshark in 10 secs...', flush=True)
+		sshdumpdied[0] = True
+		#win32pipe.DisconnectNamedPipe(pipe)
+		time.sleep(10)
+		tsharkproc.kill()
 	except CustomException:
 		print ('sshdumpwatchdog requested to terminate', flush=True)
 		print ('killing tshark in 10 secs...', flush=True)
@@ -391,8 +410,8 @@ try:
 		tsharkstartcount[0] = tsharkstartcount[0] + 1
 		wireshark_cmd=[r'C:\Program Files\Wireshark\tshark.exe', r'-i', \
 		       r'\\.\pipe\tshark_sppd2', r'-Y', r"data.len>0", r'-Tfields', \
-		       r'-e', r'frame.time', r'-e', r'ip.src', r'-e', r'tcp.srcport', \
-		       r'-e', r'ip.dst', r'-e', r'tcp.dstport', r'-e', r'data', r'-l']
+		       r'-e', r'frame.time', r'-e', r'ip.src', r'-e', r'tcp.srcport', r'-e', r'udp.srcport',\
+		       r'-e', r'ip.dst', r'-e', r'tcp.dstport', r'-e', r'udp.dstport', r'-e', r'data', r'-l']
 		proc=subprocess.Popen(wireshark_cmd, stdout=subprocess.PIPE, creationflags = subprocess.CREATE_NO_WINDOW)
 
 

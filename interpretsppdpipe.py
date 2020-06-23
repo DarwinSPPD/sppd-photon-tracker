@@ -1712,7 +1712,21 @@ def processelement(param):
 					elem[1].append({key:(b'cV\\x00\\x0c', b[jbase+j+4:jbase+j+16])})
 				else:
 					elem[1].append((b'cV\\x00\\x0c', b[jbase+j+4:jbase+j+16]))
-				j += ((jbase+16) - (jbase+0))
+			# wifi error 200?
+			elif b[jbase+j+0:jbase+j+4] == b'Db\x00\x00':
+				if elemprettyprintdepth != stackindex:
+					elemprettyprint += b'\r\n' + wstatusprefix
+					elemprettyprintdepth = stackindex
+					p = elemprettyprintdepth
+					while p > 1:
+						elemprettyprint += b'\t'
+						p -= 1
+				elemprettyprint += b'Db\\x00\\x00 ' + repr(b[jbase+j+4:jbase+j+5]).encode() + b', '
+				if haskeys:
+					elem[1].append({key:(b'Db\\x00\\x00', b[jbase+j+4:jbase+j+5])})
+				else:
+					elem[1].append((b'Db\\x00\\x00', b[jbase+j+4:jbase+j+5]))
+				j += ((jbase+5) - (jbase+0))
 			else:
 				if elemprettyprintdepth != stackindex:
 					elemprettyprint += b'\r\n' + wstatusprefix
@@ -1807,7 +1821,7 @@ def interpretsppd(param1line, param2file, othervariables):
 			if s:
 				b = bytes.fromhex(s[s.rindex(b'\t')+1:].decode())
 				stream = s[s.index(b'\t'):s.rindex(b'\t')]
-				temp, source, sourceport, destination, destinationport = \
+				temp, source, tcpsourceport, udpsourceport, destination, tcpdestinationport, udpdestinationport = \
 				      stream.split(b'\t')
 				csvpackettime = s[:s.index(b'\t')]
 				csvpackettime0, csvpackettime1 = csvpackettime.split(b', ')
@@ -1818,237 +1832,247 @@ def interpretsppd(param1line, param2file, othervariables):
 				csvstream = s[s.index(b'\t')+1:s.rindex(b'\t')].replace(b'\t', b' ')
 				wcache = b''
 				wstatus = b''
-				if ((not ((b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport) in streamfilter)) or \
-				   (not ((b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport) in streamfilter))) and \
-				   b[:1] == b'\xfb' and len(b[1:5]) == 4 and len(b) == int.from_bytes(b[1:5], 'big'):
-					clearandresetplayerdatacache((characterinstances,))
-					if destinationport == b'4530' or destinationport == b'4531' or destinationport == b'4533':
-						w += b'>>> \r\n>>> \r\n>>> \r\n >>> \r\n'
-						wstatus = b'Client'
-						streamfilter.update({stream:(b'\r\n???\r\n', wstatus)})
-						streamfilter.update({(b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport):(b'\r\n???\r\n', b'Server')})
-					else:
-						w += b'<<< \r\n<<< \r\n<<< \r\n <<< \r\n'
-						wstatus = b'Server'
-						streamfilter.update({stream:(b'\r\n???\r\n', wstatus)})
-						streamfilter.update({(b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport):(b'\r\n???\r\n', b'Client')})
-						
-				
-				if (not ((b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport) in streamfilter)) and b == b'\x01\x00':
-					wcache = b'<<< \r\n<<< \r\n<<< \r\n <<< ' + s[:s.rindex(b'\t')+1] + b'/* Welcome to our server! */ ' + repr(b).encode() + b'\r\n'
-					wstatus = b'Init'
-					streamfilter.update({stream:(wcache, wstatus)})
-					clearandresetplayerdatacache((characterinstances,))
-##					continue
-					break
-				if (b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport) in streamfilter and \
-				   streamfilter[b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport][1] == b'Init' and \
-				   (b[:1] == b'\xf0' or b[:1] == b'\xfb' or b == b'\x01\x00'):
-					w += streamfilter[b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport][0]
-					clearandresetplayerdatacache((characterinstances,))
-					wstatus = b'Server'
-					streamfilter.update({stream:(wcache, wstatus)})
-					streamfilter.update({(b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport):(b'', b'Client')})
-				if (b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport) in streamfilter and \
-				   streamfilter[b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport][1] == b'Init' and \
-				   (b[:1] == b'\xf0' or b[:1] == b'\xfb'):
-					w += streamfilter[b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport][0]
-					clearandresetplayerdatacache((characterinstances,))
-					wstatus = b'Client'
-					streamfilter.update({stream:(b'', wstatus)})
-					streamfilter.update({(b'\t'+destination+b'\t'+destinationport+b'\t'+source+b'\t'+sourceport):(wcache, b'Server')})
-				while (b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport) in streamfilter:
-					#continue goes here
-					wstatus = streamfilter[b'\t'+source+b'\t'+sourceport+b'\t'+destination+b'\t'+destinationport][1]
-					wstatusprefix = b''
-					if wstatus == b'Server':
-						wstatusprefix = b' <<< '
-					elif wstatus == b'Client':
-						wstatusprefix = b' >>> '
-					w += wstatusprefix
-					splitindex = 0
-					if stream in d:
-						b2 = d[stream]
-						btemp = b2 + b
-						splitindex = len(b2)
-						b = btemp[:]
-						del d[stream]
-					if b == b'\x01\x00':
-						characterinstances = {}
-						timerstart[0] = None
-						pingdictionary[0] = {}
-						pingprintmessage[0] = None
-						w += b'<<< \r\n<<< \r\n<<< \r\n <<< ' + s[:s.rindex(b'\t')+1] + b'/* Welcome to our server! */ ' + repr(b).encode() + b'\r\n'
-	##							wstatus = b'Init'
-	##							streamfilter.update({stream:(wcache, wstatus)})
-					elif b[:1] == b'\xf0':
-						w += s[:s.rindex(b'\t')+1]
-						w += b'/* Ping */ ' + repr(b[:1]).encode()
-						j = 0
-						servertime = None
-						if wstatus == b'Server':
-							servertime = b[1+j:5+j]
-							w += b'/* Server time */ ' + repr(servertime).encode()
-							(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, b'Server time', (b'i', b[1+j:5+j]), csvfile, 0, characterinstances, w, wstatusprefix))
-							j += 4
-						clienttime = b[1+j:5+j]
-						w += b'/* Client time */ ' + repr(clienttime).encode()
-						w += b'\r\n'
-						if servertime != None:
-							if clienttime in pingdictionary[0]:
-								csvpackettimesecondsfloatold = pingdictionary[0][clienttime]
-								csvpackettimedelta = csvpackettimesecondsfloat - csvpackettimesecondsfloatold
-								if csvpackettimedelta < 0:
-									csvpackettimedelta += 24*60*60
-								w += wstatusprefix + b'Ping = '+("{0:.3f}".format(csvpackettimedelta*1000)).encode() + b' ms\r\n'
-								pingprintmessage[0] = wstatusprefix.decode() + 'Ping = '+("{0:.3f}".format(csvpackettimedelta*1000)) + ' ms'
-								print (wstatusprefix.decode() + 'Ping = '+("{0:.3f}".format(csvpackettimedelta*1000)) + ' ms', flush=True)
-								del pingdictionary[0][clienttime]
-							else:
-								w += wstatusprefix + b'Ping '+repr(clienttime).encode() +b' is missing!\r\n'
-								pingprintmessage[0] = wstatusprefix.decode() + 'Ping '+repr(clienttime) + ' is missing!'
-								print(wstatusprefix.decode() + 'Ping '+repr(clienttime) + ' is missing!', flush=True)
+				wprotocoltype = b''
+				if tcpsourceport != b'' and tcpdestinationport != b'':
+					wprotocoltype = b'TCP'
+				if udpsourceport != b'' and udpdestinationport != b'':
+					wprotocoltype = b'UDP'
+				if ((not ((b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport+b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport) in streamfilter)) or \
+				   (not ((b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport) in streamfilter))):
+					if wprotocoltype == b'TCP' and b[:1] == b'\xfb' and len(b[1:5]) == 4 and len(b) == int.from_bytes(b[1:5], 'big'):
+						clearandresetplayerdatacache((characterinstances,))
+						if tcpdestinationport == b'4530' or tcpdestinationport == b'4531' or tcpdestinationport == b'4533':
+							w += b'>>> \r\n>>> \r\n>>> \r\n >>> \r\n'
+							wstatus = b'Client'
+							streamfilter.update({stream:(b'\r\n???\r\n', wstatus)})
+							streamfilter.update({(b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport):(b'\r\n???\r\n', b'Server')})
 						else:
-							pingdictionary[0].update({clienttime:csvpackettimesecondsfloat})
-						if b[5+j:]:
-							temp = b[5+j:]
-							b = temp[:]
-							continue
-					elif b[:1] == b'\xfb':
+							w += b'<<< \r\n<<< \r\n<<< \r\n <<< \r\n'
+							wstatus = b'Server'
+							streamfilter.update({stream:(b'\r\n???\r\n', wstatus)})
+							streamfilter.update({(b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport):(b'\r\n???\r\n', b'Client')})
+
+				if wprotocoltype == b'TCP':
+					# Depending on tracker software, stream may or may not start with b'\x01\x00'
+					if (not ((b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport+b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport) in streamfilter)) and b == b'\x01\x00':
+						wcache = b'<<< \r\n<<< \r\n<<< \r\n <<< ' + s[:s.rindex(b'\t')+1] + b'/* Welcome to our server! */ ' + repr(b).encode() + b'\r\n'
+						wstatus = b'Init'
+						streamfilter.update({stream:(wcache, wstatus)})
+						clearandresetplayerdatacache((characterinstances,))
+	##					continue
+						break
+					if (b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport+b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport) in streamfilter and \
+					   streamfilter[b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport+b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport][1] == b'Init' and \
+					   (b[:1] == b'\xf0' or b[:1] == b'\xfb' or b == b'\x01\x00'):
+						w += streamfilter[b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport+b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport][0]
+						clearandresetplayerdatacache((characterinstances,))
+						wstatus = b'Server'
+						streamfilter.update({stream:(wcache, wstatus)})
+						streamfilter.update({(b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport):(b'', b'Client')})
+					if (b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport) in streamfilter and \
+					   streamfilter[b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport][1] == b'Init' and \
+					   (b[:1] == b'\xf0' or b[:1] == b'\xfb'):
+						w += streamfilter[b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport][0]
+						clearandresetplayerdatacache((characterinstances,))
+						wstatus = b'Client'
+						streamfilter.update({stream:(b'', wstatus)})
+						streamfilter.update({(b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport+b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport):(wcache, b'Server')})
 
 						
-
-						packetlen = int.from_bytes(b[1:5], 'big')
-						bsafecopy = b[:packetlen]
-						
-						w += s[:s.rindex(b'\t')+1]
-						if len(b[1:5]) != 4 or len(b[:int.from_bytes(b[1:5], 'big')]) != int.from_bytes(b[1:5], 'big'):
-							w += b'/*** truncated ***/ \r\n'
-							d.update({stream:b})
-							break
-						wi = len(w)
-
-						photon_packet_data_5_7 = bsafecopy[5:7]
-						photon_packet_data_7_9 = bsafecopy[7:9]
-
-						if photon_packet_data_7_9 == b'\xf3\x02' \
-						   or photon_packet_data_7_9 == b'\xf3\x03' \
-						   or photon_packet_data_7_9 == b'\xf3\x04':
-							w += b'/* Command ' + bsafecopy[5:9].hex().encode() + b' */ ' + repr(bsafecopy[:5]).encode()
-							w += b' + ' + repr(photon_packet_data_5_7).encode() + b' + ' + repr(photon_packet_data_7_9).encode() + b'\r\n' 
+					while (b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport+b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport) in streamfilter:
+						#continue goes here
+						wstatus = streamfilter[b'\t'+source+b'\t'+tcpsourceport+b'\t'+udpsourceport+b'\t'+destination+b'\t'+tcpdestinationport+b'\t'+udpdestinationport][1]
+						wstatusprefix = b''
+						if wstatus == b'Server':
+							wstatusprefix = b' <<< '
+						elif wstatus == b'Client':
+							wstatusprefix = b' >>> '
+						w += wstatusprefix
+						splitindex = 0
+						if stream in d:
+							b2 = d[stream]
+							btemp = b2 + b
+							splitindex = len(b2)
+							b = btemp[:]
+							del d[stream]
+						if b == b'\x01\x00':
+							clearandresetplayerdatacache((characterinstances,))
+							w += b'<<< \r\n<<< \r\n<<< \r\n <<< ' + s[:s.rindex(b'\t')+1] + b'/* Welcome to our server! */ ' + repr(b).encode() + b'\r\n'
+		##							wstatus = b'Init'
+		##							streamfilter.update({stream:(wcache, wstatus)})
+						elif b[:1] == b'\xf0':
+							w += s[:s.rindex(b'\t')+1]
+							w += b'/* Ping */ ' + repr(b[:1]).encode()
 							j = 0
-							photon_packet_i_9 = 0
-							skip_photon_param = False
-							break_photon_processing = False
-							while (9+photon_packet_i_9+j) < packetlen:
-								photon_packet_data_9i0_9i1 = bsafecopy[9+photon_packet_i_9+0+j:9+photon_packet_i_9+1+j]
-								photon_packet_data_9i1_9i3 = bsafecopy[9+photon_packet_i_9+1+j:9+photon_packet_i_9+3+j]
-								w += b' + ' + repr(photon_packet_data_9i0_9i1).encode() + b' + ' + repr(photon_packet_data_9i1_9i3).encode() + b'\r\n'
-##								if not ((9+photon_packet_i_9+3+j) < packetlen):
-##									break
-								photon_packet_signed_integer_9i1_9i3 = int.from_bytes(photon_packet_data_9i1_9i3, "big")
-								if photon_packet_signed_integer_9i1_9i3 > 255:
-									photon_packet_signed_integer_9i1_9i3 = 1
-									skip_photon_param = True
-								photon_packet_i_9 += 3
-								jj = 0
-								while ((9+photon_packet_i_9+j) < packetlen) and (jj < photon_packet_signed_integer_9i1_9i3):
-									sppdparam = b''
-									if not skip_photon_param:
-										sppdparamdata = bsafecopy[9+photon_packet_i_9+0+j:9+photon_packet_i_9+1+j]
-										sppdparam = repr(sppdparamdata).encode()
-										if sppdparamdata in photonparameters:
-											sppdparam = photonparameters[sppdparamdata] + b' ' + sppdparam
-										w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
-										photon_packet_i_9 += 1
-									jbase_temp = 9+photon_packet_i_9
-									j_temp = j
-									(ja, haskeys, bsafecopy, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix, errormessage) = processelement((1, False, bsafecopy, jbase_temp, j_temp, w, splitindex, wi, d, stream, True, wstatusprefix, None))
-									if errormessage != None:
-										break_photon_processing = True
-										w += b'\r\n' + wstatusprefix + b'/* Recognised portion of the photon packet */ ' + str(bsafecopy[:jbase_temp+j_temp]).encode() + \
-										     b' ' + b'/* Unrecognised portion of the photon packet */' + str(bsafecopy[jbase_temp+j_temp:]).encode()
-									(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, sppdparam, elem, csvfile, 0, characterinstances, w, wstatusprefix))
-									w += b'\r\n'
-									jj += 1
-									if skip_photon_param:
-										break_photon_processing = True
+							servertime = None
+							if wstatus == b'Server':
+								servertime = b[1+j:5+j]
+								w += b'/* Server time */ ' + repr(servertime).encode()
+								(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, b'Server time', (b'i', b[1+j:5+j]), csvfile, 0, characterinstances, w, wstatusprefix))
+								j += 4
+							clienttime = b[1+j:5+j]
+							w += b'/* Client time */ ' + repr(clienttime).encode()
+							w += b'\r\n'
+							if servertime != None:
+								if clienttime in pingdictionary[0]:
+									csvpackettimesecondsfloatold = pingdictionary[0][clienttime]
+									csvpackettimedelta = csvpackettimesecondsfloat - csvpackettimesecondsfloatold
+									if csvpackettimedelta < 0:
+										csvpackettimedelta += 24*60*60
+									w += wstatusprefix + b'Ping = '+("{0:.3f}".format(csvpackettimedelta*1000)).encode() + b' ms\r\n'
+									pingprintmessage[0] = wstatusprefix.decode() + 'Ping = '+("{0:.3f}".format(csvpackettimedelta*1000)) + ' ms'
+									print (wstatusprefix.decode() + 'Ping = '+("{0:.3f}".format(csvpackettimedelta*1000)) + ' ms', flush=True)
+									del pingdictionary[0][clienttime]
+								else:
+									w += wstatusprefix + b'Ping '+repr(clienttime).encode() +b' is missing!\r\n'
+									pingprintmessage[0] = wstatusprefix.decode() + 'Ping '+repr(clienttime) + ' is missing!'
+									print(wstatusprefix.decode() + 'Ping '+repr(clienttime) + ' is missing!', flush=True)
+							else:
+								pingdictionary[0].update({clienttime:csvpackettimesecondsfloat})
+							if b[5+j:]:
+								temp = b[5+j:]
+								b = temp[:]
+								continue
+						elif b[:1] == b'\xfb':
+
+							
+
+							packetlen = int.from_bytes(b[1:5], 'big')
+							bsafecopy = b[:packetlen]
+							
+							w += s[:s.rindex(b'\t')+1]
+							if len(b[1:5]) != 4 or len(b[:int.from_bytes(b[1:5], 'big')]) != int.from_bytes(b[1:5], 'big'):
+								w += b'/*** truncated ***/ \r\n'
+								d.update({stream:b})
+								break
+							wi = len(w)
+
+							photon_packet_data_5_7 = bsafecopy[5:7]
+							photon_packet_data_7_9 = bsafecopy[7:9]
+
+							if photon_packet_data_7_9 == b'\xf3\x02' \
+							   or photon_packet_data_7_9 == b'\xf3\x03' \
+							   or photon_packet_data_7_9 == b'\xf3\x04':
+								w += b'/* Command ' + bsafecopy[5:9].hex().encode() + b' */ ' + repr(bsafecopy[:5]).encode()
+								w += b' + ' + repr(photon_packet_data_5_7).encode() + b' + ' + repr(photon_packet_data_7_9).encode() + b'\r\n' 
+								j = 0
+								photon_packet_i_9 = 0
+								skip_photon_param = False
+								break_photon_processing = False
+								while (9+photon_packet_i_9+j) < packetlen:
+									photon_packet_data_9i0_9i1 = bsafecopy[9+photon_packet_i_9+0+j:9+photon_packet_i_9+1+j]
+									photon_packet_data_9i1_9i3 = bsafecopy[9+photon_packet_i_9+1+j:9+photon_packet_i_9+3+j]
+									w += b' + ' + repr(photon_packet_data_9i0_9i1).encode() + b' + ' + repr(photon_packet_data_9i1_9i3).encode() + b'\r\n'
+	##								if not ((9+photon_packet_i_9+3+j) < packetlen):
+	##									break
+									photon_packet_signed_integer_9i1_9i3 = int.from_bytes(photon_packet_data_9i1_9i3, "big")
+									if photon_packet_signed_integer_9i1_9i3 > 255:
+										photon_packet_signed_integer_9i1_9i3 = 1
+										skip_photon_param = True
+									photon_packet_i_9 += 3
+									jj = 0
+									while ((9+photon_packet_i_9+j) < packetlen) and (jj < photon_packet_signed_integer_9i1_9i3):
+										sppdparam = b''
+										if not skip_photon_param:
+											sppdparamdata = bsafecopy[9+photon_packet_i_9+0+j:9+photon_packet_i_9+1+j]
+											sppdparam = repr(sppdparamdata).encode()
+											if sppdparamdata in photonparameters:
+												sppdparam = photonparameters[sppdparamdata] + b' ' + sppdparam
+											w += wstatusprefix + b'/* Param */ ' + sppdparam + b' '
+											photon_packet_i_9 += 1
+										jbase_temp = 9+photon_packet_i_9
+										j_temp = j
+										(ja, haskeys, bsafecopy, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix, errormessage) = processelement((1, False, bsafecopy, jbase_temp, j_temp, w, splitindex, wi, d, stream, True, wstatusprefix, None))
+										if errormessage != None:
+											break_photon_processing = True
+											w += b'\r\n' + wstatusprefix + b'/* Recognised portion of the photon packet */ ' + str(bsafecopy[:jbase_temp+j_temp]).encode() + \
+											     b' ' + b'/* Unrecognised portion of the photon packet */' + str(bsafecopy[jbase_temp+j_temp:]).encode()
+										(csvpackettime, csvstream, csvcommandparam, csvelem, csvfile, csvtype, characterinstances, w, wstatusprefix) = logelementtocsv((csvpackettime, csvstream, sppdparam, elem, csvfile, 0, characterinstances, w, wstatusprefix))
+										w += b'\r\n'
+										jj += 1
+										if skip_photon_param:
+											break_photon_processing = True
+										if break_photon_processing:
+											break
 									if break_photon_processing:
 										break
-								if break_photon_processing:
-									break
-							if (9+photon_packet_i_9+j) < packetlen:
-								w += b'/* Unknown data of length ' + str(packetlen-(9+photon_packet_i_9+j)).encode() + b' */ ' + repr(bsafecopy[(9+photon_packet_i_9+j):]).encode() + b'\r\n'
-							if b[packetlen:]:
-								temp = b[packetlen:]
-								b = temp[:]
-								continue
-						elif b[5:9] == b'\x00\x01\xf3\x82' or b[5:9] == b'\x00\x01\xf3\x83':
-							w += b'/* Command C */ ' + repr(b[:5]).encode()
-							w += b'/* Param 1 */ ' + repr(b[5:9]).encode()
-							packetlen = int.from_bytes(b[1:5], 'big')
-							w += b'/* Param 2 data of length ' + str(packetlen-9).encode() + b' */ ' + repr(b[9:packetlen]).encode() + b'\r\n'
-							if b[packetlen:]:
-								temp = b[packetlen:]
-								b = temp[:]
-								continue
-						elif b[5:18] == b'\x00\x01\xf3\x06\x00\x00\x01\x01x\x00\x00\x00`':
-							w += b'/* Command C3 */ ' + repr(b[:5]).encode()
-							w += b'/* Param 1 */ ' + repr(b[5:18]).encode()
-							packetlen = int.from_bytes(b[1:5], 'big')
-							w += b'/* Param 2 data of length ' + str(packetlen-18).encode() + b' */ ' + repr(b[18:packetlen]).encode() + b'\r\n'
-							if b[packetlen:]:
-								temp = b[packetlen:]
-								b = temp[:]
-								continue
-						elif b[5:21] == b'\x00\x01\xf3\x07\x00\x00\x00*\x00\x01\x01x\x00\x00\x00`':
-							w += b'/* Command C4 */ ' + repr(b[:5]).encode()
-							w += b'/* Param 1 */ ' + repr(b[5:21]).encode()
-							packetlen = int.from_bytes(b[1:5], 'big')
-							w += b'/* Param 2 data of length ' + str(packetlen-21).encode() + b' */ ' + repr(b[21:packetlen]).encode() + b'\r\n'
-							if b[packetlen:]:
-								temp = b[packetlen:]
-								b = temp[:]
-								continue
-						elif b[5:16] == b'\x00\x01\xf3\x00\x01\x06\x1eA\x01\x11\x00':
-							w += b'/* Command D */ ' + repr(b[:5]).encode()
-							w += b'/* Param 1 */ ' + repr(b[5:16]).encode()
-							packetlen = int.from_bytes(b[1:5], 'big')
-							w += b'/* Param 2 data of length ' + str(packetlen-16).encode() + b' */ ' + repr(b[16:packetlen]).encode() + b'\r\n'
-							if b[packetlen:]:
-								temp = b[packetlen:]
-								b = temp[:]
-								continue
-##						elif b[5:12] == b'\x00\x01\xf3\x03\xe1\x7f\xf8' \
-##						     or b[5:12] == b'\x00\x01\xf3\x03\xfc\xff\xfe':
-##							w += b'/* Command E matchmaking message */ ' + repr(b[:5]).encode()
-##							w += b'/* Param 1 */ ' + repr(b[5:12]).encode()
-##							packetlen = int.from_bytes(b[1:5], 'big')
-##							w += b'/* Param 2 string */ '
-##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 12, j, w, splitindex, wi, d, stream, True, wstatusprefix))
-##	##								if stream in d:
-##	##									break
-##							w += b'/* Param 2 data of length ' + str(packetlen-(12+j)).encode() + b' */ ' + repr(b[12+j:packetlen]).encode() + b'\r\n'
-##							if b[packetlen:]:
-##								temp = b[packetlen:]
-##								b = temp[:]
-##								continue
-						elif b[5:10] == b'\x00\x01\xf3\x01\x00':
-							w += b'/* Command F */ ' + repr(b[:5]).encode()
-							w += b' + ' + repr(b[5:10]).encode() + b'\r\n'
-							packetlen = int.from_bytes(b[1:5], 'big')
-							if b[packetlen:]:
-								temp = b[packetlen:]
-								b = temp[:]
-								continue
-						else:
-							packetlen = int.from_bytes(b[1:5], 'big')
-							w += b'/* Unknown command ' + repr(b[5:16]).encode() + b' ??? */ ' + repr(b[:packetlen]).encode() + b'\r\n'
-							if b[packetlen:]:
-								temp = b[packetlen:]
-								b = temp[:]
-								continue
-					break
+								if (9+photon_packet_i_9+j) < packetlen:
+									w += b'/* Unknown data of length ' + str(packetlen-(9+photon_packet_i_9+j)).encode() + b' */ ' + repr(bsafecopy[(9+photon_packet_i_9+j):]).encode() + b'\r\n'
+								if b[packetlen:]:
+									temp = b[packetlen:]
+									b = temp[:]
+									continue
+							elif b[5:9] == b'\x00\x01\xf3\x82' or b[5:9] == b'\x00\x01\xf3\x83':
+								w += b'/* Command C */ ' + repr(b[:5]).encode()
+								w += b'/* Param 1 */ ' + repr(b[5:9]).encode()
+								packetlen = int.from_bytes(b[1:5], 'big')
+								w += b'/* Param 2 data of length ' + str(packetlen-9).encode() + b' */ ' + repr(b[9:packetlen]).encode() + b'\r\n'
+								if b[packetlen:]:
+									temp = b[packetlen:]
+									b = temp[:]
+									continue
+							elif b[5:18] == b'\x00\x01\xf3\x06\x00\x00\x01\x01x\x00\x00\x00`':
+								w += b'/* Command C3 */ ' + repr(b[:5]).encode()
+								w += b'/* Param 1 */ ' + repr(b[5:18]).encode()
+								packetlen = int.from_bytes(b[1:5], 'big')
+								w += b'/* Param 2 data of length ' + str(packetlen-18).encode() + b' */ ' + repr(b[18:packetlen]).encode() + b'\r\n'
+								if b[packetlen:]:
+									temp = b[packetlen:]
+									b = temp[:]
+									continue
+							elif b[5:21] == b'\x00\x01\xf3\x07\x00\x00\x00*\x00\x01\x01x\x00\x00\x00`':
+								w += b'/* Command C4 */ ' + repr(b[:5]).encode()
+								w += b'/* Param 1 */ ' + repr(b[5:21]).encode()
+								packetlen = int.from_bytes(b[1:5], 'big')
+								w += b'/* Param 2 data of length ' + str(packetlen-21).encode() + b' */ ' + repr(b[21:packetlen]).encode() + b'\r\n'
+								if b[packetlen:]:
+									temp = b[packetlen:]
+									b = temp[:]
+									continue
+							elif b[5:16] == b'\x00\x01\xf3\x00\x01\x06\x1eA\x01\x11\x00':
+								w += b'/* Command D */ ' + repr(b[:5]).encode()
+								w += b'/* Param 1 */ ' + repr(b[5:16]).encode()
+								packetlen = int.from_bytes(b[1:5], 'big')
+								w += b'/* Param 2 data of length ' + str(packetlen-16).encode() + b' */ ' + repr(b[16:packetlen]).encode() + b'\r\n'
+								if b[packetlen:]:
+									temp = b[packetlen:]
+									b = temp[:]
+									continue
+	##						elif b[5:12] == b'\x00\x01\xf3\x03\xe1\x7f\xf8' \
+	##						     or b[5:12] == b'\x00\x01\xf3\x03\xfc\xff\xfe':
+	##							w += b'/* Command E matchmaking message */ ' + repr(b[:5]).encode()
+	##							w += b'/* Param 1 */ ' + repr(b[5:12]).encode()
+	##							packetlen = int.from_bytes(b[1:5], 'big')
+	##							w += b'/* Param 2 string */ '
+	##							(ja, haskeys, b, jbase, j, w, splitindex, wi, d, stream, elem, wstatusprefix) = processelement((1, False, b, 12, j, w, splitindex, wi, d, stream, True, wstatusprefix))
+	##	##								if stream in d:
+	##	##									break
+	##							w += b'/* Param 2 data of length ' + str(packetlen-(12+j)).encode() + b' */ ' + repr(b[12+j:packetlen]).encode() + b'\r\n'
+	##							if b[packetlen:]:
+	##								temp = b[packetlen:]
+	##								b = temp[:]
+	##								continue
+							elif b[5:10] == b'\x00\x01\xf3\x01\x00':
+								w += b'/* Command F */ ' + repr(b[:5]).encode()
+								w += b' + ' + repr(b[5:10]).encode() + b'\r\n'
+								packetlen = int.from_bytes(b[1:5], 'big')
+								if b[packetlen:]:
+									temp = b[packetlen:]
+									b = temp[:]
+									continue
+							else:
+								packetlen = int.from_bytes(b[1:5], 'big')
+								w += b'/* Unknown command ' + repr(b[5:16]).encode() + b' ??? */ ' + repr(b[:packetlen]).encode() + b'\r\n'
+								if b[packetlen:]:
+									temp = b[packetlen:]
+									b = temp[:]
+									continue
+						break
+				elif wprotocoltype == b'UDP':
+					w += s[:s.rindex(b'\t')+1]
+					w += b'/* UDP data */ ' + repr(b[:]).encode()
+					w += b'\r\n'
+					
 				#break goes here
 			else:
 				w += s + b'\r\n'
